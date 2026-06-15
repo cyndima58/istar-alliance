@@ -4,20 +4,46 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updatePassword,
+  initializeApp as _initApp,
 } from "firebase/auth";
 import {
   doc, getDoc, setDoc, collection,
-  query, where, getDocs, addDoc, serverTimestamp,
+  query, where, getDocs, serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
+/* ─────────────────────────────────────────────
+   Secondary Firebase App（專門用來建立新帳號，
+   不會把主教練登出）
+───────────────────────────────────────────── */
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth } from "firebase/auth";
+
+const SECONDARY_APP_NAME = "istar-secondary";
+const firebaseConfig = {
+  apiKey:            "AIzaSyAr_FH3cyWmcHFW4icnhzUd1TaPC9gERaI",
+  authDomain:        "istar-alliance.firebaseapp.com",
+  projectId:         "istar-alliance",
+  storageBucket:     "istar-alliance.firebasestorage.app",
+  messagingSenderId: "538197880233",
+  appId:             "1:538197880233:web:fad87b5466cc04d6eea8b8",
+};
+
+function getSecondaryAuth() {
+  const existing = getApps().find(a => a.name === SECONDARY_APP_NAME);
+  const app = existing ?? initializeApp(firebaseConfig, SECONDARY_APP_NAME);
+  return getAuth(app);
+}
+
+/* ─────────────────────────────────────────────
+   Context
+───────────────────────────────────────────── */
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
-  const [profile, setProfile] = useState(null); // Firestore users/{uid}
-  const [role,    setRole]    = useState(null);  // "coach" | "student"
+  const [profile, setProfile] = useState(null);
+  const [role,    setRole]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
 
@@ -29,10 +55,9 @@ export function AuthProvider({ children }) {
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const data = snap.data();
-          setProfile(data);
+          setProfile({ uid: firebaseUser.uid, ...data });
           setRole(data.role || null);
         } else {
-          // 帳號存在 Auth 但 Firestore 沒有資料
           setProfile(null);
           setRole(null);
         }
@@ -67,40 +92,51 @@ export function AuthProvider({ children }) {
   /* ── 登出 ── */
   const logout = () => signOut(auth);
 
-  /* ════════════════════════════════
-     教練後台：新增成員
-  ════════════════════════════════ */
-  const addMember = async ({
-    name, email, password, birthdate,
-    coachId, coachName, courseType, joinDate, role: memberRole,
-  }) => {
+  /* ══════════════════════════════════════════
+     新增成員（用 secondary auth，不影響主教練登入狀態）
+  ══════════════════════════════════════════ */
+  const addMember = async (formData) => {
+    const {
+      name, email, password, role: memberRole,
+      // 學員專用
+      birthdate, coachId, coachName, courseType, joinDate,
+    } = formData;
+
     try {
-      // 1. 在 Firebase Auth 建立帳號
+      const secondaryAuth = getSecondaryAuth();
+
+      // 用 secondary auth instance 建立帳號，不影響主教練
       const credential = await createUserWithEmailAndPassword(
-        auth._delegate ?? auth,
+        secondaryAuth,
         email.trim().toLowerCase(),
         password
       );
-      // createUserWithEmailAndPassword 會自動登入，
-      // 需要重新登入回教練帳號 — 先記錄教練的 uid
-      // 實際做法：用 secondary auth instance 避免切換
-      // 簡單做法：先寫 Firestore，再讓教練重新登入
       const newUid = credential.user.uid;
 
-      // 2. 寫入 Firestore users 集合
-      await setDoc(doc(db, "users", newUid), {
+      // 建完後立刻登出 secondary（避免殘留狀態）
+      await signOut(secondaryAuth);
+
+      // 寫入 Firestore — 學員和教練欄位分開
+      const userData = {
         name,
         email: email.trim().toLowerCase(),
-        birthdate,
         role: memberRole,
-        coachId,
-        coachName,
-        courseType,
-        joinDate,
         isAdmin: false,
         createdAt: serverTimestamp(),
         status: "active",
-      });
+      };
+
+      if (memberRole === "student") {
+        // 學員專用欄位
+        userData.birthdate  = birthdate  || "";
+        userData.coachId    = coachId    || "";
+        userData.coachName  = coachName  || "";
+        userData.courseType = courseType || "";
+        userData.joinDate   = joinDate   || "";
+      }
+      // 教練不需要上述欄位
+
+      await setDoc(doc(db, "users", newUid), userData);
 
       return { success: true };
     } catch (e) {
@@ -113,11 +149,15 @@ export function AuthProvider({ children }) {
     }
   };
 
-  /* ── 取得所有成員清單（教練用）── */
+  /* ── 取得所有成員（教練用）── */
   const fetchMembers = async () => {
-    const q    = query(collection(db, "users"), where("role", "in", ["student", "coach"]));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    try {
+      const q    = query(collection(db, "users"), where("role", "in", ["student", "coach"]));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    } catch {
+      return [];
+    }
   };
 
   return (

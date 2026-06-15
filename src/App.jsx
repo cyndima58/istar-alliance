@@ -144,9 +144,6 @@ select.input-field{appearance:none;}
 .login-brand{font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--gold);letter-spacing:.04em;text-align:center;margin-bottom:4px;}
 .login-sub{font-size:13px;color:var(--star-3);text-align:center;margin-bottom:32px;}
 .login-card{width:100%;background:var(--space-2);border:1px solid rgba(255,255,255,.08);border-radius:var(--r-lg);padding:24px 20px;}
-.login-divider{display:flex;align-items:center;gap:10px;margin:16px 0;}
-.login-divider-line{flex:1;height:1px;background:rgba(255,255,255,.08);}
-.login-divider-text{font-size:12px;color:var(--star-3);}
 .login-error{background:rgba(224,92,92,.12);border:1px solid rgba(224,92,92,.3);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--coral);margin-bottom:12px;text-align:center;}
 .login-no-access{background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:var(--r);padding:12px 14px;font-size:13px;color:var(--gold);text-align:center;margin-top:12px;line-height:1.6;}
 .logout-btn{padding:6px 12px;border-radius:var(--r);border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--star-3);font-size:11px;font-family:var(--font-body);cursor:pointer;transition:all .2s;}
@@ -408,21 +405,32 @@ function ModalAddModule({ onClose }) {
 }
 
 function ModalAddRecord({ onClose }) {
+  const { profile, fetchMembers } = useAuth();
+  const [students, setStudents] = useState([]);
+
+  useEffect(() => {
+    fetchMembers()
+      .then(all => setStudents(all.filter(m => m.role === "student")))
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal-sheet">
         <div className="modal-handle" />
         <div className="modal-title">新增上課記錄</div>
-        <div className="input-label">課程模組</div>
-        <select className="input-field">
-          <option>品牌定位工作坊</option>
-          <option>市場驗證策略</option>
-          <option>MBTI優勢盤點</option>
-        </select>
         <div className="input-label">學員</div>
         <select className="input-field">
-          <option>林○○</option><option>張○○</option><option>陳○○</option>
+          <option value="">— 選擇學員 —</option>
+          {students.map(s => (
+            <option key={s.uid} value={s.uid}>{s.name}</option>
+          ))}
         </select>
+        <div className="input-label">上課日期</div>
+        <input className="input-field" type="date"
+          defaultValue={new Date().toISOString().slice(0,10)} />
+        <div className="input-label">課程主題</div>
+        <input className="input-field" placeholder="例：個人品牌定位工作坊" />
         <div className="input-label">給學員的回饋</div>
         <textarea className="input-field" rows={2} placeholder="課後鼓勵與建議…" />
         <div className="input-label">教練私密備註</div>
@@ -449,6 +457,11 @@ const S_TABS = [
 ];
 
 function SHome({ onSwitch }) {
+  const { profile } = useAuth();
+  const name = profile?.name || "同學";
+  const courseType = profile?.courseType || "";
+  const coachName  = profile?.coachName  || "";
+
   return (
     <div className="screen-enter" style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
       <div className="topbar">
@@ -456,12 +469,14 @@ function SHome({ onSwitch }) {
           <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR</div>
           <div style={{ fontSize:11, color:"var(--star-3)", marginTop:1 }}>星辰聯盟</div>
         </div>
-        <div className="avatar">林O</div>
+        <div className="avatar">{name.slice(0,1)}</div>
       </div>
       <div className="content">
         <div className="card-gold" style={{ marginBottom:12 }}>
-          <div className="greeting-name">早安，林同學 <span style={{ fontSize:18 }}>✦</span></div>
-          <div className="greeting-sub" style={{ marginTop:4 }}>你正在「定位」階段的路上，保持前進</div>
+          <div className="greeting-name">歡迎回來，{name} <span style={{ fontSize:18 }}>✦</span></div>
+          <div className="greeting-sub" style={{ marginTop:4 }}>
+            {courseType ? `${courseType} · ` : ""}繼續前進，你的星辰正在等你
+          </div>
           <div style={{ marginTop:12 }}>
             <div className="stage-bar">
               {STAGE_SEGS.map((s, i) => <div key={i} className={`stage-seg ${s}`} />)}
@@ -470,37 +485,28 @@ function SHome({ onSwitch }) {
           </div>
         </div>
         <div className="stats-grid">
-          <div className="stat-tile"><div className="stat-num gold">8</div><div className="stat-lbl">已完成課程</div></div>
-          <div className="stat-tile"><div className="stat-num nebula">68%</div><div className="stat-lbl">當前路徑進度</div></div>
+          <div className="stat-tile"><div className="stat-num gold">—</div><div className="stat-lbl">已完成課程</div></div>
+          <div className="stat-tile"><div className="stat-num nebula">—</div><div className="stat-lbl">當前路徑進度</div></div>
         </div>
-        <div className="sec-h">本週課程</div>
-        <div className="card-glow">
-          <div className="course-header">
-            <div>
-              <span className="badge badge-nebula" style={{ marginBottom:7 }}>🌱 個人賦能班</span>
-              <div className="course-name">個人品牌定位工作坊</div>
-              <div className="course-meta">週四 20:00 · 線上課程</div>
+        {courseType ? (
+          <>
+            <div className="sec-h">我的課程</div>
+            <div className="card" style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div>
+                <div style={{ fontSize:14, fontWeight:600 }}>{courseType}</div>
+                {coachName && <div style={{ fontSize:12, color:"var(--star-3)", marginTop:2 }}>主教練：{coachName}</div>}
+              </div>
+              <button className="btn" style={{ fontSize:12 }} onClick={() => onSwitch("courses")}>查看</button>
             </div>
-            <span className="badge badge-teal">即將開始</span>
-          </div>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:5 }}>
-            <span style={{ fontSize:11, color:"var(--star-3)" }}>預習進度</span>
-            <span style={{ fontSize:11, color:"var(--nebula)" }}>35%</span>
-          </div>
-          <div className="prog-track"><div className="prog-fill" style={{ width:"35%" }} /></div>
-        </div>
-        <div className="card card-sm" style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <div>
-            <div style={{ fontSize:13, fontWeight:600 }}>市場驗證策略</div>
-            <div style={{ fontSize:11, color:"var(--star-3)" }}>週六 14:00 · 實體</div>
-          </div>
-          <span className="badge badge-gold">備課中</span>
-        </div>
-        <div className="sec-h">教練回饋</div>
-        <div className="card">
-          <div className="feedback-author">✦ 王教練 · 昨天</div>
-          <div className="feedback-quote">你的定位草稿很清晰，下週試著加入「對象痛點」的描述，會更有說服力。</div>
-        </div>
+          </>
+        ) : (
+          <>
+            <div className="sec-h">課程</div>
+            <div className="card" style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, padding:"20px 16px" }}>
+              尚未分配課程，請聯絡您的教練
+            </div>
+          </>
+        )}
         <div className="sec-h">快速入口</div>
         <div className="qa-grid">
           <button className="qa-card" onClick={() => onSwitch("growth")}>
@@ -521,12 +527,17 @@ function SHome({ onSwitch }) {
 }
 
 function SCourses({ onSwitch }) {
+  const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState("all");
+  const courseType = profile?.courseType || "";
+  const coachName  = profile?.coachName  || "";
+  const joinDate   = profile?.joinDate   || "";
+
   return (
     <div className="screen-enter" style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
       <div className="topbar">
         <div className="topbar-title">我的課程</div>
-        <div className="avatar">林O</div>
+        <div className="avatar">{(profile?.name || "?").slice(0,1)}</div>
       </div>
       <div className="inner-tabs" style={{ padding:"0 16px" }}>
         {[["all","全部"],["ongoing","進行中"],["done","已完成"]].map(([key,label]) => (
@@ -538,33 +549,39 @@ function SCourses({ onSwitch }) {
         ))}
       </div>
       <div className="content" style={{ paddingTop:8 }}>
-        {(activeTab === "all" || activeTab === "ongoing") && (
-        <div className="card-glow">
-          <div className="course-header">
-            <span className="badge badge-teal">進行中</span>
-            <span style={{ fontSize:11, color:"var(--star-3)" }}>第 3 週 / 共 12 週</span>
+        {!courseType ? (
+          <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:40 }}>
+            尚未分配課程<br />
+            <span style={{ fontSize:12 }}>請聯絡您的教練</span>
           </div>
-          <div className="course-name" style={{ marginTop:8 }}>🌱 個人賦能班</div>
-          <div className="course-meta" style={{ marginBottom:10 }}>主教練：王志遠 · 個人品牌 × 收入轉化</div>
-          <div className="prog-track" style={{ marginBottom:5 }}><div className="prog-fill" style={{ width:"25%" }} /></div>
-          <div style={{ fontSize:11, color:"var(--star-3)", marginBottom:12 }}>25% 完成</div>
-          <div className="btn-row" style={{ marginTop:0 }}>
-            <button className="btn" style={{ fontSize:12 }}>查看課程模組</button>
-            <button className="btn btn-primary" style={{ fontSize:12 }}>聯絡教練</button>
-          </div>
-        </div>
-        )}
-        {(activeTab === "all" || activeTab === "done") && (
-        <div className="card">
-          <div className="course-header">
-            <span className="badge badge-nebula">已完成</span>
-            <span style={{ fontSize:11, color:"var(--star-3)" }}>2025.01</span>
-          </div>
-          <div className="course-name" style={{ marginTop:8 }}>🔍 定位體驗班</div>
-          <div className="course-meta" style={{ marginBottom:10 }}>主教練：陳美珍 · 4 小時沉浸體驗</div>
-          <div className="prog-track"><div className="prog-fill" style={{ width:"100%" }} /></div>
-          <div style={{ fontSize:11, color:"var(--teal)", marginTop:5 }}>✓ 已完成</div>
-        </div>
+        ) : (
+          <>
+            {(activeTab === "all" || activeTab === "ongoing") && (
+              <div className="card-glow">
+                <div className="course-header">
+                  <span className="badge badge-teal">進行中</span>
+                  {joinDate && <span style={{ fontSize:11, color:"var(--star-3)" }}>加入 {joinDate}</span>}
+                </div>
+                <div className="course-name" style={{ marginTop:8 }}>{courseType}</div>
+                {coachName && (
+                  <div className="course-meta" style={{ marginBottom:10 }}>主教練：{coachName}</div>
+                )}
+                <div className="prog-track" style={{ marginBottom:5 }}>
+                  <div className="prog-fill" style={{ width:"0%" }} />
+                </div>
+                <div style={{ fontSize:11, color:"var(--star-3)", marginBottom:12 }}>課程進行中</div>
+                <div className="btn-row" style={{ marginTop:0 }}>
+                  <button className="btn" style={{ fontSize:12 }}>查看課程模組</button>
+                  <button className="btn btn-primary" style={{ fontSize:12 }}>聯絡教練</button>
+                </div>
+              </div>
+            )}
+            {activeTab === "done" && (
+              <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:40 }}>
+                尚無已完成課程
+              </div>
+            )}
+          </>
         )}
       </div>
       <BottomNav tabs={S_TABS} active="courses" onSwitch={onSwitch} />
@@ -573,11 +590,12 @@ function SCourses({ onSwitch }) {
 }
 
 function SGrowth({ onSwitch }) {
+  const { profile } = useAuth();
   return (
     <div className="screen-enter" style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
       <div className="topbar">
         <div className="topbar-title">成長路徑</div>
-        <div className="avatar">林O</div>
+        <div className="avatar">{(profile?.name || "?").slice(0,1)}</div>
       </div>
       <div className="content">
         <div className="card-gold" style={{ marginBottom:14 }}>
@@ -612,39 +630,37 @@ function SGrowth({ onSwitch }) {
 }
 
 function SFeedback({ onSwitch }) {
+  const { profile } = useAuth();
+  const coachName = profile?.coachName || "";
+
   return (
     <div className="screen-enter" style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
       <div className="topbar">
         <div className="topbar-title">互動反饋</div>
-        <div className="avatar">林O</div>
+        <div className="avatar">{(profile?.name || "?").slice(0,1)}</div>
       </div>
       <div className="content">
-        <div className="sec-h">我的教練團隊</div>
+        <div className="sec-h">我的教練</div>
         <div className="card">
-          {[
-            { av:"王志", bg:"linear-gradient(135deg,#6C5CE7,#9B8BF4)", name:"王志遠", badge:true,  tag:"個人品牌 · 商業模式" },
-            { av:"陳美", bg:"linear-gradient(135deg,#00B89C,#00D4B8)", name:"陳美珍", badge:false, tag:"自我認知 · 職涯定向", last:true },
-          ].map((c) => (
-            <div key={c.name} className="coach-row" style={c.last ? { borderBottom:"none" } : {}}>
-              <div className="coach-av" style={{ background:c.bg }}>{c.av}</div>
+          {coachName ? (
+            <div className="coach-row" style={{ borderBottom:"none" }}>
+              <div className="coach-av" style={{ background:"linear-gradient(135deg,#6C5CE7,#9B8BF4)" }}>
+                {coachName.slice(0,2)}
+              </div>
               <div style={{ flex:1 }}>
                 <div className="coach-name">
-                  {c.name}{c.badge && <span className="badge badge-gold" style={{ fontSize:10, marginLeft:4 }}>主教練</span>}
+                  {coachName}
+                  <span className="badge badge-gold" style={{ fontSize:10, marginLeft:4 }}>主教練</span>
                 </div>
-                <div className="coach-tag">{c.tag}</div>
+                <div className="coach-tag">{profile?.courseType || ""}</div>
               </div>
               <button className="btn" style={{ fontSize:12, padding:"7px 10px" }}>聯絡</button>
             </div>
-          ))}
-        </div>
-        <div className="sec-h">最新回饋</div>
-        <div className="card">
-          <div className="feedback-author">✦ 王教練 · 2025.06.12</div>
-          <div className="feedback-quote">這週的品牌定位工作坊你表現積極，對「差異化」的思考更清晰了，下週試著加入目標受眾的輪廓描述。</div>
-          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-            <span style={{ fontSize:11, color:"var(--star-3)" }}>情緒狀態</span>
-            <span style={{ fontSize:18 }}>😊😊😊😐😐</span>
-          </div>
+          ) : (
+            <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, padding:"12px 0" }}>
+              尚未指定教練
+            </div>
+          )}
         </div>
         <div className="sec-h">填寫本週反饋</div>
         <textarea className="input-field" rows={3} placeholder="記錄這週的學習心得、疑問或想法…" />
@@ -669,11 +685,16 @@ const C_TABS = [
 ];
 
 function CHome({ onSwitch }) {
-  const students = [
-    { av:"林O", bg:"linear-gradient(135deg,#6C5CE7,#9B8BF4)", name:"林○○", badge:true,  sub:"個人賦能班 · 定位 68%" },
-    { av:"張O", bg:"linear-gradient(135deg,#BA7517,#EF9F27)", name:"張○○", badge:false, sub:"創業預備班 · 方向 40%" },
-    { av:"陳O", bg:"linear-gradient(135deg,#00B89C,#00D4B8)", name:"陳○○", badge:false, sub:"個人賦能班 · 自我認知 90%", last:true },
-  ];
+  const { profile, fetchMembers } = useAuth();
+  const [students, setStudents] = useState([]);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    fetchMembers().then(all => {
+      setStudents(all.filter(m => m.role === "student" && m.coachId === profile.uid));
+    }).catch(() => {});
+  }, [profile?.uid]);
+
   return (
     <div className="screen-enter" style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
       <div className="topbar">
@@ -681,38 +702,56 @@ function CHome({ onSwitch }) {
           <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR · 教練</div>
           <div style={{ fontSize:11, color:"var(--star-3)", marginTop:1 }}>Coach Dashboard</div>
         </div>
-        <div className="avatar" style={{ background:"linear-gradient(135deg,#00B89C,#00D4B8)" }}>王志</div>
+        <div className="avatar" style={{ background:"linear-gradient(135deg,#00B89C,#00D4B8)" }}>
+          {(profile?.name || "教").slice(0,1)}
+        </div>
       </div>
       <div className="content">
         <div className="card" style={{ borderColor:"rgba(0,184,156,.2)", marginBottom:12 }}>
-          <div style={{ fontSize:18, fontWeight:700, fontFamily:"var(--font-display)" }}>王志遠教練</div>
-          <div style={{ fontSize:13, color:"var(--star-2)", marginTop:3 }}>本週 2 堂課 · 負責 4 位學員</div>
+          <div style={{ fontSize:18, fontWeight:700, fontFamily:"var(--font-display)" }}>
+            {profile?.name || "教練"}
+          </div>
+          <div style={{ fontSize:13, color:"var(--star-2)", marginTop:3 }}>
+            負責 {students.length} 位學員
+          </div>
         </div>
         <div className="stats-grid">
-          <div className="stat-tile"><div className="stat-num" style={{ color:"var(--teal)" }}>4</div><div className="stat-lbl">負責學員</div></div>
-          <div className="stat-tile"><div className="stat-num" style={{ color:"var(--nebula)" }}>12</div><div className="stat-lbl">課程模組</div></div>
+          <div className="stat-tile">
+            <div className="stat-num" style={{ color:"var(--teal)" }}>{students.length}</div>
+            <div className="stat-lbl">負責學員</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-num" style={{ color:"var(--nebula)" }}>—</div>
+            <div className="stat-lbl">課程模組</div>
+          </div>
         </div>
         <div className="sec-h">我的學員</div>
         <div className="card" style={{ padding:"8px 14px" }}>
-          {students.map((r) => (
-            <div key={r.name} className="coach-row" style={r.last ? { borderBottom:"none" } : {}}>
-              <div className="coach-av" style={{ background:r.bg, fontSize:12 }}>{r.av}</div>
-              <div style={{ flex:1 }}>
-                <div className="coach-name" style={{ fontSize:13 }}>
-                  {r.name}{r.badge && <span className="badge badge-gold" style={{ fontSize:10, marginLeft:4 }}>主教練</span>}
-                </div>
-                <div className="coach-tag">{r.sub}</div>
-              </div>
-              <button className="btn" style={{ fontSize:11, padding:"6px 10px" }} onClick={() => onSwitch("assign")}>分配</button>
+          {students.length === 0 ? (
+            <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, padding:"12px 0" }}>
+              尚無負責學員，前往成員管理新增
             </div>
-          ))}
+          ) : (
+            students.map((s, i) => (
+              <div key={s.uid} className="coach-row" style={i === students.length-1 ? { borderBottom:"none" } : {}}>
+                <div className="coach-av" style={{ background:"linear-gradient(135deg,#6C5CE7,#9B8BF4)", fontSize:12 }}>
+                  {s.name?.slice(0,2) || "??"}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div className="coach-name" style={{ fontSize:13 }}>{s.name}</div>
+                  <div className="coach-tag">{s.courseType || ""}</div>
+                </div>
+                <button className="btn" style={{ fontSize:11, padding:"6px 10px" }} onClick={() => onSwitch("assign")}>分配</button>
+              </div>
+            ))
+          )}
         </div>
         <div className="sec-h">快速操作</div>
         <div className="qa-grid">
           <button className="qa-card" onClick={() => onSwitch("modules")}><span className="qa-icon">✦</span><div className="qa-label">課程模組</div><div className="qa-sub">新增 / 編輯</div></button>
           <button className="qa-card" onClick={() => onSwitch("assign")}><span className="qa-icon">🎯</span><div className="qa-label">分配課程</div><div className="qa-sub">指派至學員</div></button>
           <button className="qa-card" onClick={() => onSwitch("records")}><span className="qa-icon">📝</span><div className="qa-label">上課記錄</div><div className="qa-sub">課後填寫</div></button>
-          <button className="qa-card"><span className="qa-icon">🗺</span><div className="qa-label">成長路徑</div><div className="qa-sub">後台設定</div></button>
+          <button className="qa-card" onClick={() => onSwitch("members")}><span className="qa-icon">👥</span><div className="qa-label">成員管理</div><div className="qa-sub">新增成員</div></button>
         </div>
       </div>
       <BottomNav tabs={C_TABS} active="home" onSwitch={onSwitch} />
@@ -721,12 +760,6 @@ function CHome({ onSwitch }) {
 }
 
 function CModules({ onSwitch, onModal }) {
-  const mods = [
-    { cls:"",       tags:[{cls:"badge-nebula",t:"定位"},{t:"3小時"},{t:"線上"}],  title:"個人品牌定位工作坊", outline:"品牌定義 → 差異化分析 → 核心訊息萃取" },
-    { cls:"teal-l", tags:[{cls:"badge-teal",  t:"市場"},{t:"2小時"},{t:"實體"}],  title:"市場驗證策略",       outline:"MVP設計 → 用戶訪談 → 數據解讀" },
-    { cls:"gold-l", tags:[{cls:"badge-gold",  t:"自我認知"},{t:"4小時"},{t:"實體"}], title:"MBTI 優勢盤點",  outline:"測評解析 → 優勢地圖 → 行動計畫" },
-  ];
-  const dimTag = { background:"rgba(255,255,255,.05)", color:"var(--star-3)", border:"1px solid rgba(255,255,255,.08)" };
   return (
     <div className="screen-enter" style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
       <div className="topbar">
@@ -734,18 +767,13 @@ function CModules({ onSwitch, onModal }) {
         <button className="btn btn-primary" style={{ fontSize:12, padding:"7px 14px" }} onClick={() => onModal("module")}>+ 新增</button>
       </div>
       <div className="content">
-        {mods.map((m) => (
-          <div key={m.title} className={`mod-card ${m.cls}`}>
-            <div className="mod-tags">
-              {m.tags.map((tg) => (
-                <span key={tg.t} className={"badge " + (tg.cls || "")} style={tg.cls ? {} : dimTag}>{tg.t}</span>
-              ))}
-            </div>
-            <div className="mod-title">{m.title}</div>
-            <div className="mod-outline">{m.outline}</div>
-          </div>
-        ))}
-        <button className="btn" style={{ width:"100%", marginTop:4 }} onClick={() => onModal("module")}>+ 新增課程模組</button>
+        <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:40, marginBottom:16 }}>
+          尚未建立課程模組<br />
+          <span style={{ fontSize:12 }}>點右上角「+ 新增」開始建立</span>
+        </div>
+        <button className="btn" style={{ width:"100%", justifyContent:"center" }} onClick={() => onModal("module")}>
+          + 新增第一個課程模組
+        </button>
       </div>
       <BottomNav tabs={C_TABS} active="modules" onSwitch={onSwitch} />
     </div>
@@ -753,37 +781,82 @@ function CModules({ onSwitch, onModal }) {
 }
 
 function CAssign({ onSwitch }) {
-  const pool = ["品牌定位工作坊","市場驗證策略","MBTI優勢盤點","商業模式設計","第一筆收入策略"];
-  const [assigned, setAssigned] = useState(["MBTI優勢盤點","品牌定位工作坊"]);
+  const { profile, fetchMembers } = useAuth();
+  const [students,  setStudents]  = useState([]);
+  const [selStudent, setSelStudent] = useState("");
+  const [pool,      setPool]      = useState([]);
+  const [assigned,  setAssigned]  = useState([]);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    fetchMembers().then(all => {
+      setStudents(all.filter(m => m.role === "student" && m.coachId === profile.uid));
+    }).catch(() => {});
+  }, [profile?.uid]);
+
   const addToStudent = (label) => {
-    setAssigned((prev) => prev.includes(label) ? prev : [...prev, label]);
+    setAssigned(prev => prev.includes(label) ? prev : [...prev, label]);
   };
+
   return (
     <div className="screen-enter" style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
       <div className="topbar">
         <div className="topbar-title">分配課程</div>
-        <span className="badge badge-nebula">林○○</span>
+        {selStudent && <span className="badge badge-nebula">{selStudent}</span>}
       </div>
       <div className="content">
-        <div style={{ fontSize:13, color:"var(--star-3)", marginBottom:12 }}>點擊下方模組，加入學員的專屬課程清單</div>
-        <div className="sec-h">可用模組庫</div>
-        <div className="module-pool">
-          {pool.map((p) => (
-            <span key={p} className="m-chip" onClick={() => addToStudent(p)}>✦ {p}</span>
-          ))}
-        </div>
-        <div className="sec-h">林○○ 的專屬課程</div>
-        <div className="drop-zone">
-          <div className="drop-label">↑ 點擊上方模組加入</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {assigned.map((a) => (
-              <span key={a} className="m-chip assigned">✓ {a}</span>
-            ))}
+        {students.length === 0 ? (
+          <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:40 }}>
+            尚無負責學員<br />
+            <span style={{ fontSize:12 }}>請先在「成員管理」新增學員</span>
           </div>
-        </div>
-        <div className="btn-row" style={{ marginTop:12 }}>
-          <button className="btn btn-primary">儲存學員課程安排</button>
-        </div>
+        ) : (
+          <>
+            <div className="sec-h">選擇學員</div>
+            <div className="chip-group">
+              {students.map(s => (
+                <div
+                  key={s.uid}
+                  className={"chip" + (selStudent === s.name ? " sel" : "")}
+                  onClick={() => { setSelStudent(s.name); setAssigned([]); }}
+                >
+                  {s.name}
+                </div>
+              ))}
+            </div>
+            {selStudent && (
+              <>
+                <div style={{ fontSize:13, color:"var(--star-3)", marginBottom:12 }}>
+                  點擊下方模組，加入 {selStudent} 的課程清單
+                </div>
+                <div className="sec-h">可用模組庫</div>
+                <div className="module-pool">
+                  {pool.length === 0 ? (
+                    <span style={{ fontSize:12, color:"var(--star-3)" }}>
+                      尚未建立課程模組，請先至「模組」頁面新增
+                    </span>
+                  ) : (
+                    pool.map(p => (
+                      <span key={p} className="m-chip" onClick={() => addToStudent(p)}>✦ {p}</span>
+                    ))
+                  )}
+                </div>
+                <div className="sec-h">{selStudent} 的專屬課程</div>
+                <div className="drop-zone">
+                  <div className="drop-label">↑ 點擊上方模組加入</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                    {assigned.map(a => (
+                      <span key={a} className="m-chip assigned">✓ {a}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="btn-row" style={{ marginTop:12 }}>
+                  <button className="btn btn-primary">儲存課程安排</button>
+                </div>
+              </>
+            )}
+          </>
+        )}
       </div>
       <BottomNav tabs={C_TABS} active="assign" onSwitch={onSwitch} />
     </div>
@@ -798,32 +871,9 @@ function CRecords({ onSwitch, onModal }) {
         <button className="btn btn-primary" style={{ fontSize:12, padding:"7px 14px" }} onClick={() => onModal("record")}>+ 新增</button>
       </div>
       <div className="content">
-        <div className="card" style={{ marginBottom:8 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-            <div>
-              <div style={{ fontSize:14, fontWeight:600 }}>品牌定位工作坊</div>
-              <div style={{ fontSize:12, color:"var(--star-3)" }}>2025.06.12 · 林○○</div>
-            </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"flex-end" }}>
-              <span className="badge badge-teal">學員可見</span>
-              <span className="badge badge-nebula">教練可見</span>
-            </div>
-          </div>
-          <div className="record-note">
-            <div className="record-note-label" style={{ color:"var(--teal)" }}>給學員的回饋</div>
-            本週表現積極，品牌訊息抓得很準，下週可試著延伸到目標客群描述。
-          </div>
-          <div className="record-note coach-only" style={{ marginTop:6 }}>
-            <div className="record-note-label" style={{ color:"var(--nebula)" }}>教練私密備註</div>
-            學員對「差異化」仍有些模糊，需加強案例討論，備案例 3–5 個。
-          </div>
-        </div>
-        <div className="card card-sm" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div>
-            <div style={{ fontSize:13, fontWeight:600 }}>MBTI優勢盤點</div>
-            <div style={{ fontSize:11, color:"var(--star-3)" }}>2025.05.28 · 林○○</div>
-          </div>
-          <span className="badge badge-teal">學員可見</span>
+        <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:40, marginBottom:16 }}>
+          尚無上課記錄<br />
+          <span style={{ fontSize:12 }}>點右上角「+ 新增」記錄上課狀況</span>
         </div>
       </div>
       <BottomNav tabs={C_TABS} active="records" onSwitch={onSwitch} />
@@ -953,7 +1003,13 @@ function CMembers({ onSwitch }) {
     setLoading(false);
     if (res.success) {
       setResult({ ok:true, msg:`${form.name} 已成功新增！` });
-      setForm(f => ({ ...f, name:"", email:"", password:"", birthdate:"" }));
+      setForm({
+        name:"", email:"", password:"", birthdate:"",
+        coachName: profile?.name || "",
+        courseType:"個人賦能班",
+        joinDate: new Date().toISOString().slice(0,10),
+        role: form.role, // 保留角色選擇，方便連續新增同類型成員
+      });
     } else {
       setResult({ ok:false, msg: res.error });
     }
@@ -1044,37 +1100,42 @@ function CMembers({ onSwitch }) {
               onChange={e => setField("name", e.target.value)} />
 
             <div className="input-label">Email *</div>
-            <input className="input-field" type="email" placeholder="student@email.com"
+            <input className="input-field" type="email" placeholder="member@email.com"
               value={form.email} onChange={e => setField("email", e.target.value)} />
 
             <div className="input-label">初始密碼 *（至少 6 碼）</div>
-            <input className="input-field" type="text" placeholder="設定一組初始密碼"
+            <input className="input-field" type="text" placeholder="設定一組初始密碼告知對方"
               value={form.password} onChange={e => setField("password", e.target.value)} />
 
-            <div className="input-label">出生年月日</div>
-            <input className="input-field" type="date" value={form.birthdate}
-              onChange={e => setField("birthdate", e.target.value)} />
+            {/* ── 學員專用欄位 ── */}
+            {form.role === "student" && (
+              <>
+                <div className="input-label">出生年月日</div>
+                <input className="input-field" type="date" value={form.birthdate}
+                  onChange={e => setField("birthdate", e.target.value)} />
 
-            <div className="input-label">課程班別</div>
-            <div className="chip-group" style={{ marginBottom:12 }}>
-              {COURSE_TYPES.map(c => (
-                <div key={c} className={"chip"+(form.courseType===c?" sel":"")}
-                  onClick={() => setField("courseType", c)}>{c}</div>
-              ))}
-            </div>
+                <div className="input-label">課程班別</div>
+                <div className="chip-group" style={{ marginBottom:12 }}>
+                  {COURSE_TYPES.map(c => (
+                    <div key={c} className={"chip"+(form.courseType===c?" sel":"")}
+                      onClick={() => setField("courseType", c)}>{c}</div>
+                  ))}
+                </div>
 
-            <div className="input-label">加入日期</div>
-            <input className="input-field" type="date" value={form.joinDate}
-              onChange={e => setField("joinDate", e.target.value)} />
+                <div className="input-label">加入日期</div>
+                <input className="input-field" type="date" value={form.joinDate}
+                  onChange={e => setField("joinDate", e.target.value)} />
 
-            <div className="input-label">負責教練姓名</div>
-            <input className="input-field" placeholder="教練姓名" value={form.coachName}
-              onChange={e => setField("coachName", e.target.value)} />
+                <div className="input-label">負責教練姓名</div>
+                <input className="input-field" placeholder="教練姓名" value={form.coachName}
+                  onChange={e => setField("coachName", e.target.value)} />
+              </>
+            )}
 
             <button type="submit" className="btn btn-primary"
               style={{ width:"100%", justifyContent:"center", marginTop:4 }}
               disabled={loading}>
-              {loading ? "新增中…" : "✦ 確認新增"}
+              {loading ? "新增中…" : `✦ 確認新增${form.role === "student" ? "學員" : "教練"}`}
             </button>
           </form>
         </div>
