@@ -1,43 +1,41 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "./AuthContext";
 
-/* ════════════════════════════════════════
-   GLOBAL CSS — v3 Premium Redesign
-════════════════════════════════════════ */
 const GLOBAL_CSS = `
 :root {
-  --space:   #080910;
-  --space-2: #0D0F1C;
-  --space-3: #141728;
-  --space-4: #1B1F34;
-  --space-5: #222640;
+  /* ── Neutral palette ── */
+  --cream:   #FAFAF7;
+  --cream-2: #F4F3EE;
+  --cream-3: #ECEAE2;
+  --cream-4: #E2DFD5;
+  --ink:     #1C1A17;
+  --ink-2:   #3D3A34;
+  --ink-3:   #7A766C;
+  --ink-4:   #B0AC9F;
 
-  --nebula:      #6C5CE7;
-  --nebula-dim:  rgba(108,92,231,0.14);
-  --nebula-glow: rgba(108,92,231,0.3);
+  /* ── Gold accent ── */
+  --gold:       #9A7B3F;
+  --gold-light: #C4A05A;
+  --gold-pale:  #F0E8D5;
+  --gold-line:  rgba(154,123,63,0.22);
 
-  --gold:      #C5A24A;
-  --gold-light:#D4B87A;
-  --gold-dim:  rgba(197,162,74,0.12);
-  --gold-glow: rgba(197,162,74,0.28);
+  /* ── Status colours ── */
+  --sage:      #4A7B5A;
+  --sage-pale: #EAF2EC;
+  --rust:      #8B3A2A;
+  --rust-pale: #F5EAE7;
+  --slate:     #3A4A6B;
+  --slate-pale:#ECF0F8;
 
-  --star:   #ECE9F8;
-  --star-2: #9D99B8;
-  --star-3: #4E4B6A;
-  --star-4: #2E2C44;
-
-  --teal:     #0FB89A;
-  --teal-dim: rgba(15,184,154,0.12);
-  --coral:    #E0614E;
-
-  --r:    10px;
-  --r-lg: 16px;
-  --r-xl: 22px;
+  /* ── Radii ── */
+  --r:    6px;
+  --r-lg: 10px;
+  --r-xl: 16px;
   --r-pill: 100px;
 
-  --font-display: 'Cormorant Garamond', 'Noto Serif TC', serif;
-  --font-body:    'DM Sans', 'Noto Sans TC', sans-serif;
-  --font-mono:    'DM Mono', monospace;
+  /* ── Typography ── */
+  --font: 'Cormorant Garamond', 'Noto Serif TC', serif;
+
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -45,16 +43,17 @@ const GLOBAL_CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root { height: 100%; }
 body {
-  font-family: var(--font-body);
-  background: var(--space);
-  color: var(--star);
+  font-family: var(--font);
+  background: var(--cream);
+  color: var(--ink);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "kern" 1, "liga" 1;
+  font-feature-settings: "kern" 1, "liga" 1, "onum" 1;
 }
 
-#starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+/* No starfield in light mode */
+#starfield { display: none; }
 
 .app {
   position: relative;
@@ -66,408 +65,401 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--cream);
 }
 
-/* ── Header ── */
+/* ── App Header ── */
 .app-header {
-  padding: 14px 20px 10px;
+  padding: 16px 22px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255,255,255,.04);
+  border-bottom: 1px solid var(--cream-4);
+  background: var(--cream);
 }
-.header-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.header-brand { display: flex; align-items: center; gap: 9px; }
 .header-logo-mark {
+  font-family: var(--font);
   font-size: 18px;
   color: var(--gold);
   line-height: 1;
-  font-family: var(--font-display);
+  font-style: italic;
 }
 .header-logo-text {
-  font-family: var(--font-display);
-  font-size: 15px;
+  font-family: var(--font);
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: .06em;
-  color: var(--star);
+  letter-spacing: .14em;
+  color: var(--ink);
+  text-transform: uppercase;
 }
 .header-logo-text span { color: var(--gold); }
 .header-right { display: flex; align-items: center; gap: 10px; }
 .role-badge {
+  font-family: var(--font);
   font-size: 10px;
   font-weight: 600;
   padding: 3px 10px;
   border-radius: var(--r-pill);
-  letter-spacing: .06em;
+  letter-spacing: .1em;
   text-transform: uppercase;
 }
-.role-badge.coach {
-  background: var(--teal-dim);
-  color: var(--teal);
-  border: 1px solid rgba(15,184,154,.25);
-}
-.role-badge.student {
-  background: var(--nebula-dim);
-  color: #9B8BF4;
-  border: 1px solid rgba(108,92,231,.25);
-}
+.role-badge.coach  { background: var(--sage-pale);  color: var(--sage);  border: 1px solid rgba(74,123,90,.2); }
+.role-badge.student{ background: var(--slate-pale); color: var(--slate); border: 1px solid rgba(58,74,107,.2); }
 .logout-btn {
-  padding: 5px 11px;
+  padding: 5px 12px;
   border-radius: var(--r-pill);
-  border: 1px solid rgba(255,255,255,.1);
+  border: 1px solid var(--cream-4);
   background: transparent;
-  color: var(--star-3);
+  color: var(--ink-3);
   font-size: 11px;
-  font-family: var(--font-body);
+  font-family: var(--font);
+  letter-spacing: .08em;
   cursor: pointer;
   transition: all .2s;
-  letter-spacing: .03em;
 }
-.logout-btn:hover { border-color: var(--coral); color: var(--coral); }
+.logout-btn:hover { border-color: var(--rust); color: var(--rust); }
 .avatar {
   width: 32px; height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--nebula), #9B8BF4);
+  background: var(--gold-pale);
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 600; color: #fff;
-  font-family: var(--font-display);
-  border: 1.5px solid rgba(108,92,231,.4);
+  font-family: var(--font);
+  font-size: 14px; font-weight: 600;
+  color: var(--gold);
+  border: 1px solid var(--gold-line);
   flex-shrink: 0;
 }
-.avatar.coach-av-header {
-  background: linear-gradient(135deg, var(--teal), #0FD4B4);
-  border-color: rgba(15,184,154,.4);
-}
+.avatar.coach-av-header { background: var(--sage-pale); color: var(--sage); border-color: rgba(74,123,90,.25); }
 
-/* ── Screen animations ── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+/* ── Screen animation ── */
+@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
 .screen-enter {
   display: flex; flex-direction: column; flex: 1; min-height: 0;
-  animation: fadeUp .2s var(--ease-out) both;
+  animation: fadeUp .18s var(--ease-out) both;
 }
 
-/* ── Topbar (inside screen) ── */
+/* ── Topbar ── */
 .topbar {
-  padding: 14px 20px 10px;
+  padding: 16px 22px 12px;
   display: flex; align-items: center; justify-content: space-between;
   flex-shrink: 0;
 }
 .topbar-title {
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -.01em;
-  color: var(--star);
+  font-family: var(--font);
+  font-size: 24px; font-weight: 500;
+  letter-spacing: .01em;
+  color: var(--ink);
 }
 
-/* ── Content area ── */
+/* ── Content ── */
 .content {
   flex: 1; overflow-y: auto;
-  padding: 6px 16px 24px;
+  padding: 6px 18px 28px;
   scrollbar-width: none;
+  background: var(--cream);
 }
 .content::-webkit-scrollbar { display: none; }
 
 /* ── Cards ── */
 .card {
-  background: var(--space-2);
-  border: 1px solid rgba(255,255,255,.055);
+  background: #fff;
+  border: 1px solid var(--cream-3);
   border-radius: var(--r-lg);
   padding: 16px 18px;
   margin-bottom: 10px;
 }
 .card-sm { padding: 11px 14px; border-radius: var(--r); margin-bottom: 8px; }
 .card-glow {
-  background: var(--space-2);
-  border: 1px solid rgba(108,92,231,.22);
+  background: #fff;
+  border: 1px solid var(--gold-line);
   border-radius: var(--r-lg);
   padding: 16px 18px; margin-bottom: 10px;
-  box-shadow: 0 0 28px rgba(108,92,231,.08), inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow: 0 2px 16px rgba(154,123,63,.06);
 }
 .card-gold {
-  background: linear-gradient(145deg, rgba(197,162,74,.1), rgba(197,162,74,.04));
-  border: 1px solid rgba(197,162,74,.22);
+  background: linear-gradient(145deg, var(--gold-pale), #FBF6EC);
+  border: 1px solid var(--gold-line);
   border-radius: var(--r-xl);
-  padding: 20px;
+  padding: 22px;
   margin-bottom: 12px;
-  box-shadow: 0 0 32px rgba(197,162,74,.06);
 }
 .card-glass {
-  background: rgba(255,255,255,.03);
-  border: 1px solid rgba(255,255,255,.07);
+  background: var(--cream-2);
+  border: 1px solid var(--cream-3);
   border-radius: var(--r-lg);
   padding: 16px 18px; margin-bottom: 10px;
-  backdrop-filter: blur(8px);
 }
 
 /* ── Greeting ── */
 .greeting-name {
-  font-family: var(--font-display);
-  font-size: 26px; font-weight: 600;
-  letter-spacing: -.02em;
-  line-height: 1.2;
-  color: var(--star);
+  font-family: var(--font);
+  font-size: 28px; font-weight: 500;
+  letter-spacing: -.01em; line-height: 1.2;
+  color: var(--ink);
 }
-.greeting-sub { font-size: 13px; color: var(--star-2); margin-top: 5px; line-height: 1.5; }
+.greeting-sub { font-size: 15px; color: var(--ink-3); margin-top: 6px; line-height: 1.5; font-style: italic; }
 
 /* ── Stats ── */
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 .stat-tile {
-  background: var(--space-3);
-  border: 1px solid rgba(255,255,255,.05);
+  background: var(--cream-2);
+  border: 1px solid var(--cream-3);
   border-radius: var(--r);
   padding: 14px 16px;
 }
 .stat-num {
-  font-family: var(--font-display);
-  font-size: 28px; font-weight: 600;
-  letter-spacing: -.02em;
-  line-height: 1;
+  font-family: var(--font);
+  font-size: 32px; font-weight: 500;
+  letter-spacing: -.02em; line-height: 1;
+  color: var(--ink);
 }
 .stat-num.gold   { color: var(--gold); }
-.stat-num.nebula { color: #9B8BF4; }
-.stat-lbl { font-size: 11px; color: var(--star-3); margin-top: 5px; letter-spacing: .04em; text-transform: uppercase; }
+.stat-num.nebula { color: var(--slate); }
+.stat-lbl { font-size: 11px; color: var(--ink-3); margin-top: 6px; letter-spacing: .1em; text-transform: uppercase; }
 
 /* ── Section heading ── */
 .sec-h {
-  font-size: 10px; font-weight: 600; color: var(--star-3);
-  letter-spacing: .12em; text-transform: uppercase;
-  margin: 18px 0 9px;
+  font-family: var(--font);
+  font-size: 11px; font-weight: 600; color: var(--ink-3);
+  letter-spacing: .14em; text-transform: uppercase;
+  margin: 20px 0 10px;
 }
 
 /* ── Badges ── */
 .badge {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 9px; border-radius: var(--r-pill);
-  font-size: 11px; font-weight: 500; letter-spacing: .01em;
+  padding: 2px 9px; border-radius: var(--r-pill);
+  font-family: var(--font);
+  font-size: 11px; font-weight: 500; letter-spacing: .06em;
 }
-.badge-nebula { background: var(--nebula-dim); color: #A89CF4; border: 1px solid rgba(108,92,231,.25); }
-.badge-gold   { background: var(--gold-dim);   color: var(--gold-light); border: 1px solid rgba(197,162,74,.25); }
-.badge-teal   { background: var(--teal-dim);   color: var(--teal); border: 1px solid rgba(15,184,154,.25); }
-.badge-coral  { background: rgba(224,97,78,.1); color: var(--coral); border: 1px solid rgba(224,97,78,.25); }
+.badge-nebula { background: var(--slate-pale); color: var(--slate); border: 1px solid rgba(58,74,107,.18); }
+.badge-gold   { background: var(--gold-pale);  color: var(--gold);  border: 1px solid var(--gold-line); }
+.badge-teal   { background: var(--sage-pale);  color: var(--sage);  border: 1px solid rgba(74,123,90,.2); }
+.badge-coral  { background: var(--rust-pale);  color: var(--rust);  border: 1px solid rgba(139,58,42,.18); }
 
 /* ── Progress bar ── */
-.prog-track { height: 3px; background: rgba(255,255,255,.06); border-radius: 2px; overflow: hidden; }
-.prog-fill  { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--nebula), #9B8BF4); }
-.prog-fill.gold { background: linear-gradient(90deg, #8C6E28, var(--gold-light)); }
+.prog-track { height: 2px; background: var(--cream-3); border-radius: 1px; overflow: hidden; }
+.prog-fill  { height: 100%; border-radius: 1px; background: var(--gold); }
+.prog-fill.gold { background: linear-gradient(90deg, var(--gold), var(--gold-light)); }
+
+/* ── Divider ── */
+.divider { height: 1px; background: var(--cream-3); margin: 4px 0; }
 
 /* ── Journey path ── */
-.journey { padding-left: 32px; }
-.journey-item { position: relative; margin-bottom: 10px; }
+.journey { padding-left: 30px; }
+.journey-item { position: relative; margin-bottom: 9px; }
 .journey-item::before {
   content: ''; position: absolute;
-  left: -20px; top: 22px; bottom: -10px;
-  width: 1px;
-  background: linear-gradient(to bottom, rgba(108,92,231,.35), transparent);
+  left: -18px; top: 20px; bottom: -9px;
+  width: 1px; background: var(--cream-3);
 }
 .journey-item:last-child::before { display: none; }
 .journey-dot {
-  position: absolute; left: -26px; top: 8px;
+  position: absolute; left: -24px; top: 7px;
   width: 12px; height: 12px; border-radius: 50%;
-  border: 1.5px solid var(--star-3);
+  border: 1.5px solid var(--cream-4);
+  background: var(--cream);
   display: flex; align-items: center; justify-content: center;
 }
-.j-title { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+.j-title { font-family: var(--font); font-size: 15px; font-weight: 500; letter-spacing: .01em; }
 .j-title.active-stage { color: var(--gold); }
-.j-sub { font-size: 12px; color: var(--star-3); margin-top: 3px; }
+.j-sub { font-size: 13px; color: var(--ink-3); margin-top: 3px; font-style: italic; }
 
 /* ── Course ── */
 .course-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.course-name { font-family: var(--font-display); font-size: 17px; font-weight: 600; margin-bottom: 3px; letter-spacing: -.01em; }
-.course-meta { font-size: 12px; color: var(--star-2); }
+.course-name { font-family: var(--font); font-size: 18px; font-weight: 500; margin-bottom: 3px; letter-spacing: .01em; }
+.course-meta { font-size: 13px; color: var(--ink-3); font-style: italic; }
 
 /* ── People rows ── */
 .coach-row {
   display: flex; align-items: center; gap: 12px;
   padding: 11px 0;
-  border-bottom: 1px solid rgba(255,255,255,.04);
+  border-bottom: 1px solid var(--cream-3);
 }
 .coach-row:last-child { border-bottom: none; }
-.coach-av { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; font-family: var(--font-display); }
-.coach-name { font-size: 14px; font-weight: 500; letter-spacing: -.01em; }
-.coach-tag { font-size: 11px; color: var(--star-3); margin-top: 2px; }
+.coach-av { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font); font-size: 14px; font-weight: 600; flex-shrink: 0; }
+.coach-name { font-family: var(--font); font-size: 15px; font-weight: 500; letter-spacing: .01em; }
+.coach-tag { font-size: 12px; color: var(--ink-3); margin-top: 2px; font-style: italic; }
 
 /* ── Buttons ── */
 .btn {
-  padding: 9px 16px; border-radius: var(--r);
-  border: 1px solid rgba(255,255,255,.1);
-  font-size: 13px; font-weight: 500;
-  font-family: var(--font-body);
+  padding: 9px 18px; border-radius: var(--r);
+  border: 1px solid var(--cream-3);
+  font-family: var(--font);
+  font-size: 13px; font-weight: 500; letter-spacing: .06em;
   cursor: pointer;
-  background: var(--space-3); color: var(--star);
+  background: #fff; color: var(--ink);
   transition: all .2s;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  letter-spacing: .01em;
 }
-.btn:hover { border-color: rgba(108,92,231,.4); background: var(--space-4); }
+.btn:hover { border-color: var(--ink-4); background: var(--cream-2); }
 .btn-primary {
-  background: var(--nebula); color: #fff;
-  border-color: transparent;
-  box-shadow: 0 2px 20px rgba(108,92,231,.3);
+  background: var(--ink);
+  color: var(--cream);
+  border-color: var(--ink);
 }
-.btn-primary:hover { background: #7D6EF0; box-shadow: 0 4px 24px rgba(108,92,231,.4); }
+.btn-primary:hover { background: var(--ink-2); border-color: var(--ink-2); }
 .btn-gold {
-  background: var(--gold-dim); color: var(--gold);
-  border-color: rgba(197,162,74,.3);
+  background: var(--gold-pale);
+  color: var(--gold);
+  border-color: var(--gold-line);
 }
-.btn-gold:hover { background: rgba(197,162,74,.2); }
-.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-gold:hover { background: #EDE0C4; }
+.btn-sm { padding: 6px 13px; font-size: 12px; }
 .btn-row { display: flex; gap: 8px; margin-top: 12px; }
 .btn-row .btn { flex: 1; }
 
 /* ── Feedback ── */
 .feedback-quote {
-  background: rgba(108,92,231,.08);
-  border-left: 2px solid var(--nebula);
+  background: var(--cream-2);
+  border-left: 2px solid var(--gold);
   border-radius: 0 var(--r) var(--r) 0;
-  padding: 11px 14px; font-size: 13px;
-  color: var(--star); line-height: 1.65; margin-bottom: 8px;
+  padding: 12px 16px; font-size: 14px;
+  color: var(--ink-2); line-height: 1.7; margin-bottom: 8px;
+  font-style: italic;
 }
-.feedback-author { font-size: 11px; color: #9B8BF4; margin-bottom: 7px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.feedback-author { font-size: 11px; color: var(--gold); margin-bottom: 8px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
 
 /* ── Forms ── */
-.input-label { font-size: 11px; color: var(--star-3); margin-bottom: 5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 500; }
+.input-label { font-family: var(--font); font-size: 11px; color: var(--ink-3); margin-bottom: 5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; }
 .input-field {
   width: 100%;
   padding: 11px 14px;
-  background: var(--space-3);
-  border: 1px solid rgba(255,255,255,.08);
+  background: var(--cream-2);
+  border: 1px solid var(--cream-3);
   border-radius: var(--r);
-  color: var(--star); font-size: 14px;
-  font-family: var(--font-body);
+  color: var(--ink); font-size: 15px;
+  font-family: var(--font);
   margin-bottom: 10px;
   transition: border-color .2s, box-shadow .2s;
   outline: none;
   line-height: 1.5;
 }
-.input-field:focus { border-color: rgba(108,92,231,.5); box-shadow: 0 0 0 3px rgba(108,92,231,.1); }
-.input-field::placeholder { color: var(--star-3); }
-textarea.input-field { resize: none; line-height: 1.65; }
+.input-field:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(154,123,63,.1); background: #fff; }
+.input-field::placeholder { color: var(--ink-4); font-style: italic; }
+textarea.input-field { resize: none; line-height: 1.7; }
 select.input-field { appearance: none; cursor: pointer; }
 
 /* ── Toggle ── */
-.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
-.toggle-lbl { font-size: 13px; color: var(--star-2); display: flex; align-items: center; gap: 8px; }
-.toggle-sw { width: 40px; height: 23px; border-radius: 12px; background: var(--space-5); border: none; cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0; }
-.toggle-sw.on { background: var(--nebula); box-shadow: 0 0 12px rgba(108,92,231,.35); }
-.toggle-sw::after { content:''; position:absolute; top:3px; left:3px; width:17px; height:17px; border-radius:50%; background:#fff; transition:left .2s var(--ease-spring); }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--cream-3); }
+.toggle-lbl { font-family: var(--font); font-size: 14px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+.toggle-sw { width: 40px; height: 23px; border-radius: 12px; background: var(--cream-3); border: none; cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0; }
+.toggle-sw.on { background: var(--ink); }
+.toggle-sw::after { content:''; position:absolute; top:3px; left:3px; width:17px; height:17px; border-radius:50%; background:#fff; transition:left .2s var(--ease-spring); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
 .toggle-sw.on::after { left: 20px; }
 
 /* ── Chips ── */
 .chip-group { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .chip {
   padding: 5px 13px; border-radius: var(--r-pill);
-  font-size: 12px; font-weight: 500;
-  border: 1px solid rgba(255,255,255,.09);
-  background: var(--space-3); color: var(--star-3);
-  cursor: pointer; transition: all .2s; letter-spacing: .01em;
+  font-family: var(--font);
+  font-size: 12px; font-weight: 500; letter-spacing: .04em;
+  border: 1px solid var(--cream-3);
+  background: #fff; color: var(--ink-3);
+  cursor: pointer; transition: all .2s;
 }
-.chip.sel { background: var(--nebula-dim); border-color: rgba(108,92,231,.4); color: #A89CF4; }
+.chip.sel { background: var(--gold-pale); border-color: var(--gold-line); color: var(--gold); }
 
 /* ── Module chips ── */
-.module-pool { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; background: var(--space-3); border-radius: var(--r); border: 1px dashed rgba(108,92,231,.25); margin-bottom: 10px; min-height: 56px; }
-.m-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: var(--r-pill); font-size: 12px; font-weight: 500; background: var(--nebula-dim); color: #A89CF4; border: 1px solid rgba(108,92,231,.25); cursor: pointer; user-select: none; transition: all .15s; }
-.m-chip:hover { background: rgba(108,92,231,.22); }
-.m-chip.assigned { background: var(--teal-dim); color: var(--teal); border-color: rgba(15,184,154,.25); }
-.drop-zone { padding: 12px; background: rgba(15,184,154,.05); border: 1px dashed rgba(15,184,154,.3); border-radius: var(--r); min-height: 64px; }
-.drop-label { font-size: 11px; color: var(--teal); margin-bottom: 8px; letter-spacing: .03em; }
+.module-pool { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; background: var(--cream-2); border-radius: var(--r); border: 1px dashed var(--cream-4); margin-bottom: 10px; min-height: 56px; }
+.m-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--r-pill); font-family: var(--font); font-size: 12px; font-weight: 500; background: var(--gold-pale); color: var(--gold); border: 1px solid var(--gold-line); cursor: pointer; user-select: none; transition: all .15s; letter-spacing: .04em; }
+.m-chip:hover { background: #EDE0C4; }
+.m-chip.assigned { background: var(--sage-pale); color: var(--sage); border-color: rgba(74,123,90,.22); }
+.drop-zone { padding: 12px; background: var(--sage-pale); border: 1px dashed rgba(74,123,90,.3); border-radius: var(--r); min-height: 64px; }
+.drop-label { font-family: var(--font); font-size: 12px; color: var(--sage); margin-bottom: 8px; letter-spacing: .04em; font-style: italic; }
 
 /* ── Record notes ── */
-.record-note { background: var(--space-3); border-radius: var(--r); padding: 11px 14px; font-size: 13px; color: var(--star-2); line-height: 1.65; margin-top: 8px; }
-.record-note.coach-only { background: rgba(108,92,231,.09); }
-.record-note-label { font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; margin-bottom: 5px; }
+.record-note { background: var(--cream-2); border-radius: var(--r); padding: 11px 14px; font-size: 14px; color: var(--ink-2); line-height: 1.7; margin-top: 8px; font-style: italic; }
+.record-note.coach-only { background: var(--gold-pale); }
+.record-note-label { font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 5px; font-style: normal; }
 
 /* ── Module cards ── */
-.mod-card { background: var(--space-2); border: 1px solid rgba(255,255,255,.055); border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 8px; border-left: 2px solid var(--nebula); }
-.mod-card.teal-l { border-left-color: var(--teal); }
+.mod-card { background: #fff; border: 1px solid var(--cream-3); border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 8px; border-left: 2px solid var(--gold); }
+.mod-card.teal-l { border-left-color: var(--sage); }
 .mod-card.gold-l  { border-left-color: var(--gold); }
-.mod-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; letter-spacing: -.01em; }
+.mod-title { font-family: var(--font); font-size: 15px; font-weight: 500; margin-bottom: 6px; letter-spacing: .01em; }
 .mod-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
-.mod-outline { font-size: 12px; color: var(--star-3); line-height: 1.55; }
+.mod-outline { font-family: var(--font); font-size: 13px; color: var(--ink-3); line-height: 1.6; font-style: italic; }
 
 /* ── Bottom nav ── */
 .bottom-nav {
-  height: 62px;
-  background: var(--space-2);
-  border-top: 1px solid rgba(255,255,255,.04);
+  height: 64px;
+  background: #fff;
+  border-top: 1px solid var(--cream-3);
   display: flex; flex-shrink: 0;
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
-.nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 500; color: var(--star-3); border: none; background: none; cursor: pointer; position: relative; letter-spacing: .04em; text-transform: uppercase; transition: color .2s; }
-.nav-item svg { width: 20px; height: 20px; }
+.nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-family: var(--font); font-size: 10px; font-weight: 600; color: var(--ink-4); border: none; background: none; cursor: pointer; position: relative; letter-spacing: .1em; text-transform: uppercase; transition: color .2s; }
+.nav-item svg { width: 19px; height: 19px; }
 .nav-item.active { color: var(--gold); }
-.nav-item.active::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:24px; height:2px; background:var(--gold); border-radius:0 0 2px 2px; box-shadow:0 0 10px var(--gold-glow); }
+.nav-item.active::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:20px; height:1.5px; background:var(--gold); border-radius:0 0 2px 2px; }
 
 /* ── Modal ── */
-.modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,.72); backdrop-filter:blur(6px); z-index:50; display:flex; align-items:flex-end; }
-.modal-sheet { background:var(--space-2); border:1px solid rgba(255,255,255,.07); border-top-left-radius:24px; border-top-right-radius:24px; padding:20px 18px 34px; width:100%; max-height:88%; overflow-y:auto; }
+.modal-overlay { position:absolute; inset:0; background:rgba(28,26,23,.5); backdrop-filter:blur(8px); z-index:50; display:flex; align-items:flex-end; }
+.modal-sheet { background:var(--cream); border:1px solid var(--cream-3); border-top-left-radius:20px; border-top-right-radius:20px; padding:22px 20px 36px; width:100%; max-height:90%; overflow-y:auto; }
 .modal-sheet::-webkit-scrollbar { display:none; }
-.modal-handle { width:32px; height:3px; border-radius:2px; background:rgba(255,255,255,.12); margin:0 auto 20px; }
-.modal-title { font-family:var(--font-display); font-size:20px; font-weight:600; margin-bottom:18px; letter-spacing:-.01em; }
+.modal-handle { width:28px; height:2px; border-radius:2px; background:var(--cream-4); margin:0 auto 22px; }
+.modal-title { font-family:var(--font); font-size:22px; font-weight:500; margin-bottom:20px; letter-spacing:.01em; color:var(--ink); }
 
 /* ── Inner tabs ── */
-.inner-tabs { display:flex; border-bottom:1px solid rgba(255,255,255,.05); flex-shrink:0; }
-.inner-tab { flex:1; padding:10px; font-size:12px; font-weight:600; text-align:center; border:none; background:none; color:var(--star-3); cursor:pointer; border-bottom:2px solid transparent; font-family:var(--font-body); transition:all .2s; letter-spacing:.05em; text-transform:uppercase; }
+.inner-tabs { display:flex; border-bottom:1px solid var(--cream-3); flex-shrink:0; }
+.inner-tab { flex:1; padding:10px; font-family:var(--font); font-size:11px; font-weight:600; text-align:center; border:none; background:none; color:var(--ink-4); cursor:pointer; border-bottom:1.5px solid transparent; transition:all .2s; letter-spacing:.1em; text-transform:uppercase; }
 .inner-tab.active { color:var(--gold); border-bottom-color:var(--gold); }
 
 /* ── QA grid ── */
 .qa-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-.qa-card { background:var(--space-3); border:1px solid rgba(255,255,255,.055); border-radius:var(--r-lg); padding:15px; cursor:pointer; transition:all .2s; text-align:left; width:100%; }
-.qa-card:hover { border-color:rgba(108,92,231,.35); background:var(--space-4); transform:translateY(-1px); }
-.qa-icon { font-size:20px; margin-bottom:8px; display:block; line-height:1; }
-.qa-label { font-size:13px; font-weight:600; color:var(--star); letter-spacing:-.01em; }
-.qa-sub { font-size:11px; color:var(--star-3); margin-top:3px; }
+.qa-card { background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:16px; cursor:pointer; transition:all .2s; text-align:left; width:100%; }
+.qa-card:hover { border-color:var(--gold-line); background:var(--gold-pale); }
+.qa-icon { font-size:20px; margin-bottom:9px; display:block; line-height:1; }
+.qa-label { font-family:var(--font); font-size:14px; font-weight:500; color:var(--ink); letter-spacing:.01em; }
+.qa-sub { font-family:var(--font); font-size:12px; color:var(--ink-3); margin-top:3px; font-style:italic; }
 
 /* ── iSTAR logo ── */
-.istar-logo { font-family:var(--font-display); font-size:11px; letter-spacing:.18em; color:var(--gold); text-transform:uppercase; }
-.istar-mark { font-size:16px; font-weight:600; }
+.istar-logo { font-family:var(--font); font-size:10px; letter-spacing:.2em; color:var(--gold); text-transform:uppercase; font-style:italic; }
+.istar-mark { font-size:16px; font-weight:600; font-style:normal; }
 
 /* ── Stage bar ── */
 .stage-bar { display:flex; gap:3px; margin-bottom:6px; }
-.stage-seg { flex:1; height:5px; border-radius:3px; }
-.stage-seg.done    { background:var(--nebula); }
-.stage-seg.current { background:var(--gold); box-shadow:0 0 8px var(--gold-glow); }
-.stage-seg.future  { background:rgba(255,255,255,.06); }
+.stage-seg { flex:1; height:3px; border-radius:2px; }
+.stage-seg.done    { background:var(--gold); }
+.stage-seg.current { background:var(--ink); }
+.stage-seg.future  { background:var(--cream-3); }
 
 /* ── Detail rows ── */
-.detail-meta-row { display:flex; gap:10px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.04); align-items:flex-start; }
-.detail-meta-lbl { font-size:11px; color:var(--star-3); min-width:56px; flex-shrink:0; padding-top:1px; letter-spacing:.04em; text-transform:uppercase; }
-.detail-meta-val { font-size:13px; color:var(--star-2); line-height:1.6; }
+.detail-meta-row { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid var(--cream-3); align-items:flex-start; }
+.detail-meta-lbl { font-family:var(--font); font-size:10px; color:var(--ink-4); min-width:56px; flex-shrink:0; padding-top:2px; letter-spacing:.1em; text-transform:uppercase; font-weight:600; }
+.detail-meta-val { font-family:var(--font); font-size:14px; color:var(--ink-2); line-height:1.65; font-style:italic; }
 
 /* ── Login ── */
-.login-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 24px; }
-.login-logo { font-family:var(--font-display); font-size:52px; color:var(--gold); text-align:center; line-height:1; margin-bottom:12px; text-shadow:0 0 40px rgba(197,162,74,.4); }
-.login-brand { font-family:var(--font-display); font-size:26px; font-weight:600; color:var(--star); letter-spacing:.04em; text-align:center; margin-bottom:4px; }
+.login-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:36px 26px; background:var(--cream); }
+.login-logo { font-family:var(--font); font-size:56px; color:var(--gold); text-align:center; line-height:1; margin-bottom:16px; font-style:italic; }
+.login-brand { font-family:var(--font); font-size:22px; font-weight:500; color:var(--ink); letter-spacing:.1em; text-align:center; margin-bottom:4px; text-transform:uppercase; }
 .login-brand span { color:var(--gold); }
-.login-sub { font-size:13px; color:var(--star-3); text-align:center; margin-bottom:36px; letter-spacing:.04em; }
-.login-card { width:100%; background:var(--space-2); border:1px solid rgba(255,255,255,.07); border-radius:var(--r-xl); padding:26px 22px; box-shadow:0 20px 60px rgba(0,0,0,.4); }
-.login-error { background:rgba(224,97,78,.1); border:1px solid rgba(224,97,78,.25); border-radius:var(--r); padding:11px 14px; font-size:13px; color:var(--coral); margin-bottom:14px; text-align:center; line-height:1.5; }
-.login-no-access { background:var(--gold-dim); border:1px solid rgba(197,162,74,.2); border-radius:var(--r); padding:13px 16px; font-size:13px; color:var(--gold); text-align:center; margin-top:14px; line-height:1.65; }
+.login-sub { font-family:var(--font); font-size:14px; color:var(--ink-3); text-align:center; margin-bottom:36px; font-style:italic; }
+.login-card { width:100%; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-xl); padding:28px 24px; box-shadow:0 4px 40px rgba(28,26,23,.06); }
+.login-error { background:var(--rust-pale); border:1px solid rgba(139,58,42,.2); border-radius:var(--r); padding:11px 14px; font-family:var(--font); font-size:13px; color:var(--rust); margin-bottom:14px; text-align:center; line-height:1.5; }
+.login-no-access { background:var(--gold-pale); border:1px solid var(--gold-line); border-radius:var(--r); padding:13px 16px; font-family:var(--font); font-size:13px; color:var(--gold); text-align:center; margin-top:14px; line-height:1.7; font-style:italic; }
 
-/* ── Resource upload panel ── */
-.resource-panel { background:var(--space-3); border:1px solid rgba(255,255,255,.06); border-radius:var(--r-lg); padding:14px; margin-top:10px; }
-.resource-panel-title { font-size:11px; font-weight:600; color:var(--star-3); letter-spacing:.1em; text-transform:uppercase; margin-bottom:10px; }
-.resource-tabs { display:flex; gap:4px; margin-bottom:12px; }
-.resource-tab { flex:1; padding:6px 4px; border-radius:var(--r-pill); border:1px solid rgba(255,255,255,.08); background:transparent; color:var(--star-3); font-size:11px; font-weight:500; cursor:pointer; transition:all .2s; font-family:var(--font-body); letter-spacing:.02em; text-align:center; }
-.resource-tab.active { background:var(--nebula-dim); border-color:rgba(108,92,231,.35); color:#A89CF4; }
-.resource-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
-.resource-item { display:flex; align-items:center; gap:10px; padding:9px 12px; background:var(--space-4); border-radius:var(--r); border:1px solid rgba(255,255,255,.05); }
-.resource-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
-.resource-icon.link { background:rgba(108,92,231,.15); }
-.resource-icon.file { background:rgba(15,184,154,.12); }
-.resource-icon.img  { background:rgba(197,162,74,.12); }
-.resource-name { font-size:13px; font-weight:500; color:var(--star); line-height:1.3; }
-.resource-meta { font-size:11px; color:var(--star-3); margin-top:2px; }
-.resource-empty { text-align:center; color:var(--star-3); font-size:13px; padding:16px 0; line-height:1.6; }
-.upload-hint { font-size:11px; color:var(--star-3); text-align:center; margin-top:6px; line-height:1.5; }
+/* ── Resource panel ── */
+.resource-panel { background:var(--cream-2); border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:16px; margin-top:12px; }
+.resource-panel-title { font-family:var(--font); font-size:11px; font-weight:600; color:var(--ink-3); letter-spacing:.12em; text-transform:uppercase; margin-bottom:12px; }
+.resource-tabs { display:flex; gap:4px; margin-bottom:14px; }
+.resource-tab { flex:1; padding:7px 4px; border-radius:var(--r-pill); border:1px solid var(--cream-3); background:#fff; color:var(--ink-3); font-family:var(--font); font-size:11px; font-weight:500; cursor:pointer; transition:all .2s; letter-spacing:.04em; text-align:center; }
+.resource-tab.active { background:var(--gold-pale); border-color:var(--gold-line); color:var(--gold); }
+.resource-list { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+.resource-item { display:flex; align-items:center; gap:10px; padding:10px 13px; background:#fff; border-radius:var(--r); border:1px solid var(--cream-3); }
+.resource-icon { width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+.resource-icon.link { background:var(--slate-pale); }
+.resource-icon.file { background:var(--sage-pale); }
+.resource-icon.img  { background:var(--gold-pale); }
+.resource-name { font-family:var(--font); font-size:14px; font-weight:500; color:var(--ink); line-height:1.3; }
+.resource-meta { font-family:var(--font); font-size:12px; color:var(--ink-4); margin-top:2px; font-style:italic; }
+.resource-empty { text-align:center; color:var(--ink-4); font-family:var(--font); font-size:13px; padding:18px 0; line-height:1.7; font-style:italic; }
+.upload-hint { font-family:var(--font); font-size:12px; color:var(--ink-4); text-align:center; margin-top:8px; line-height:1.6; font-style:italic; }
 `;
+
 
 /* ════════════════════════════════════════
    DATA
@@ -532,7 +524,7 @@ const IcDoc   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 const IcSend  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
 const IcEye   = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 const IcUsers = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>;
-const IcLock  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--star-3)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>;
+const IcLock  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>;
 const IcLink  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>;
 const IcFile  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 const IcImg   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
@@ -617,10 +609,10 @@ function ResourcePanel({ role: userRole }) {
       {(tab === "file" || tab === "img") && (
         <>
           <label style={{ display:"block", width:"100%", cursor:"pointer" }}>
-            <div style={{ border:"1.5px dashed rgba(255,255,255,.12)", borderRadius:"var(--r)", padding:"20px 12px", textAlign:"center", background:"var(--space-4)" }}>
+            <div style={{ border:"1.5px dashed rgba(255,255,255,.12)", borderRadius:"var(--r)", padding:"20px 12px", textAlign:"center", background:"var(--cream-3)" }}>
               <div style={{ fontSize:22, marginBottom:6 }}>{tab==="img" ? "🖼" : "📎"}</div>
-              <div style={{ fontSize:13, color:"var(--star-2)", fontWeight:500 }}>點此上傳{tab==="img"?"圖片":"檔案"}</div>
-              <div style={{ fontSize:11, color:"var(--star-3)", marginTop:4 }}>
+              <div style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>點此上傳{tab==="img"?"圖片":"檔案"}</div>
+              <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:4 }}>
                 {tab==="img" ? "支援 JPG、PNG、GIF、WEBP" : "支援 PDF、DOC、XLS、PPT 等"}
               </div>
             </div>
@@ -650,7 +642,7 @@ function ResourcePanel({ role: userRole }) {
                   {r.size ? r.size + " · " : ""}{r.by === "coach" ? "教練上傳" : "學員上傳"} · {r.ts}
                 </div>
               </div>
-              <button onClick={() => setRes(res => res.filter((_,j)=>j!==i))} style={{ border:"none",background:"none",color:"var(--star-3)",cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1 }}>×</button>
+              <button onClick={() => setRes(res => res.filter((_,j)=>j!==i))} style={{ border:"none",background:"none",color:"var(--ink-3)",cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1 }}>×</button>
             </div>
           ))}
         </div>
@@ -672,8 +664,8 @@ function GrowthItem({ s }) {
     ...(s.status==="done"
       ? { background:s.dotColor, borderColor:s.dotColor, boxShadow:`0 0 8px ${s.dotGlow||"transparent"}` }
       : s.status==="active"
-      ? { background:"var(--space)", borderColor:s.dotColor, borderWidth:2, boxShadow:`0 0 0 3px ${s.dotGlow||"transparent"},0 0 12px ${s.dotColor}` }
-      : { background:"var(--space-3)", borderColor:"var(--star-3)" }),
+      ? { background:"var(--cream)", borderColor:s.dotColor, borderWidth:2, boxShadow:`0 0 0 3px ${s.dotGlow||"transparent"},0 0 12px ${s.dotColor}` }
+      : { background:"var(--cream-2)", borderColor:"var(--ink-3)" }),
   };
   const cardExtra = s.status==="active"
     ? { borderColor: open?"rgba(197,162,74,.55)":"rgba(197,162,74,.28)", background:"rgba(197,162,74,.04)" }
@@ -686,7 +678,7 @@ function GrowthItem({ s }) {
       <div className="journey-dot" style={dotStyle}>
         {s.status==="done"   && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
         {s.status==="active" && <div style={{ width:6, height:6, borderRadius:"50%", background:s.dotColor }} />}
-        {s.status==="future" && <span style={{ fontSize:8, color:"var(--star-3)", fontWeight:700 }}>{s.num}</span>}
+        {s.status==="future" && <span style={{ fontSize:8, color:"var(--ink-3)", fontWeight:700 }}>{s.num}</span>}
       </div>
       <div
         className={"card"+(s.status==="done"?" card-sm":"")}
@@ -697,7 +689,7 @@ function GrowthItem({ s }) {
           <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
               <div>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", color:"var(--teal)", marginBottom:3, textTransform:"uppercase" }}>{s.tag}</div>
+                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", color:"var(--sage)", marginBottom:3, textTransform:"uppercase" }}>{s.tag}</div>
                 <div className="j-title">{s.num}. {s.name}</div>
                 <div className="j-sub">{s.sub}</div>
               </div>
@@ -723,7 +715,7 @@ function GrowthItem({ s }) {
               <span className="badge badge-gold" style={{ flexShrink:0, marginLeft:8 }}>{s.pct}%</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
-              <span style={{ fontSize:11, color:"var(--star-3)" }}>完成進度</span>
+              <span style={{ fontSize:11, color:"var(--ink-3)" }}>完成進度</span>
               <span style={{ fontSize:11, color:"var(--gold)" }}>{s.pct}%</span>
             </div>
             <div className="prog-track" style={{ marginBottom:10 }}><div className="prog-fill gold" style={{ width:`${s.pct}%` }} /></div>
@@ -741,7 +733,7 @@ function GrowthItem({ s }) {
           <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", color:isCoCreate?"rgba(197,162,74,.45)":"var(--star-3)", marginBottom:3, textTransform:"uppercase" }}>{s.tag}</div>
+                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", color:isCoCreate?"rgba(197,162,74,.45)":"var(--ink-3)", marginBottom:3, textTransform:"uppercase" }}>{s.tag}</div>
                 <div className="j-title" style={isCoCreate?{color:"rgba(197,162,74,.45)"}:{}}>{s.num}. {s.name}</div>
                 <div className="j-sub">{s.sub}</div>
               </div>
@@ -842,7 +834,7 @@ function SHome({ onSwitch }) {
       <div className="topbar">
         <div>
           <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR</div>
-          <div style={{ fontSize:11, color:"var(--star-3)", marginTop:2, letterSpacing:".04em" }}>星辰聯盟</div>
+          <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, letterSpacing:".04em" }}>星辰聯盟</div>
         </div>
         <div className="avatar">{name.slice(0,1)}</div>
       </div>
@@ -868,8 +860,8 @@ function SHome({ onSwitch }) {
             <div className="sec-h">我的課程</div>
             <div className="card" style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
               <div>
-                <div style={{ fontSize:15, fontWeight:600, fontFamily:"var(--font-display)", letterSpacing:"-.01em" }}>{courseType}</div>
-                {coachName && <div style={{ fontSize:12, color:"var(--star-3)", marginTop:3 }}>主要聯絡教練：{coachName}</div>}
+                <div style={{ fontSize:15, fontWeight:600, fontFamily:"var(--font)", letterSpacing:"-.01em" }}>{courseType}</div>
+                {coachName && <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:3 }}>主要聯絡教練：{coachName}</div>}
               </div>
               <button className="btn btn-sm" onClick={() => onSwitch("courses")}>查看</button>
             </div>
@@ -877,7 +869,7 @@ function SHome({ onSwitch }) {
         ) : (
           <>
             <div className="sec-h">課程</div>
-            <div className="card" style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, padding:"22px 16px", lineHeight:1.65 }}>
+            <div className="card" style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, padding:"22px 16px", lineHeight:1.65 }}>
               尚未分配課程<br /><span style={{ fontSize:12 }}>請聯絡您的教練</span>
             </div>
           </>
@@ -920,7 +912,7 @@ function SCourses({ onSwitch }) {
       </div>
       <div className="content" style={{ paddingTop:10 }}>
         {!courseType ? (
-          <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:48, lineHeight:1.7 }}>
+          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, lineHeight:1.7 }}>
             尚未分配課程<br /><span style={{ fontSize:12 }}>請聯絡您的教練</span>
           </div>
         ) : (
@@ -929,12 +921,12 @@ function SCourses({ onSwitch }) {
               <div className="card-glow">
                 <div className="course-header">
                   <span className="badge badge-teal">進行中</span>
-                  {joinDate && <span style={{ fontSize:11, color:"var(--star-3)" }}>加入 {joinDate}</span>}
+                  {joinDate && <span style={{ fontSize:11, color:"var(--ink-3)" }}>加入 {joinDate}</span>}
                 </div>
                 <div className="course-name" style={{ marginTop:8 }}>{courseType}</div>
                 {coachName && <div className="course-meta" style={{ marginBottom:10 }}>主要聯絡教練：{coachName}</div>}
                 <div className="prog-track" style={{ marginBottom:5 }}><div className="prog-fill" style={{ width:"0%" }}/></div>
-                <div style={{ fontSize:11, color:"var(--star-3)", marginBottom:14 }}>課程進行中</div>
+                <div style={{ fontSize:11, color:"var(--ink-3)", marginBottom:14 }}>課程進行中</div>
                 <div className="btn-row" style={{ marginTop:0 }}>
                   <button className="btn btn-sm">查看課程模組</button>
                   <button className="btn btn-primary btn-sm">聯絡教練</button>
@@ -943,7 +935,7 @@ function SCourses({ onSwitch }) {
               </div>
             )}
             {activeTab==="done" && (
-              <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:48 }}>尚無已完成課程</div>
+              <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48 }}>尚無已完成課程</div>
             )}
           </>
         )}
@@ -964,19 +956,19 @@ function SGrowth({ onSwitch }) {
       <div className="content">
         <div className="card-gold" style={{ marginBottom:14 }}>
           <div style={{ fontSize:9, color:"var(--gold)", letterSpacing:".12em", fontWeight:700, marginBottom:8, textTransform:"uppercase" }}>✦ 目前所在階段</div>
-          <div style={{ fontFamily:"var(--font-display)", fontSize:28, fontWeight:600, letterSpacing:"-.02em" }}>定位</div>
+          <div style={{ fontFamily:"var(--font)", fontSize:28, fontWeight:600, letterSpacing:"-.02em" }}>定位</div>
           <div style={{ fontSize:13, color:"rgba(197,162,74,.7)", marginTop:4, lineHeight:1.5 }}>找到屬於你的位置，讓能力被市場看見</div>
           <div style={{ marginTop:16 }}>
             <div className="stage-bar">{STAGE_SEGS.map((s,i)=><div key={i} className={`stage-seg ${s}`}/>)}</div>
             <div style={{ display:"flex", justifyContent:"space-between", marginTop:7 }}>
               <span style={{ fontSize:11, color:"var(--gold-light)" }}>第 4 / 9 階段</span>
-              <span style={{ fontSize:11, color:"var(--star-3)" }}>預計還需 8 週</span>
+              <span style={{ fontSize:11, color:"var(--ink-3)" }}>預計還需 8 週</span>
             </div>
           </div>
         </div>
-        <div style={{ display:"flex", gap:12, padding:"8px 14px", background:"var(--space-3)", borderRadius:"var(--r)", marginBottom:14, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", gap:12, padding:"8px 14px", background:"var(--cream-2)", borderRadius:"var(--r)", marginBottom:14, flexWrap:"wrap" }}>
           {[["#C5A24A","入星"],["#6C5CE7","賦能"],["#0FB89A","驗證"],["#E0614E","創業"]].map(([c,l])=>(
-            <div key={l} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--star-3)" }}>
+            <div key={l} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--ink-3)" }}>
               <div style={{ width:7,height:7,borderRadius:"50%",background:c }}/>{l}
             </div>
           ))}
@@ -1012,7 +1004,7 @@ function SFeedback({ onSwitch }) {
               <button className="btn btn-sm">聯絡</button>
             </div>
           ) : (
-            <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, padding:"14px 0" }}>尚未指定教練</div>
+            <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, padding:"14px 0" }}>尚未指定教練</div>
           )}
         </div>
         <div className="sec-h">填寫本週反饋</div>
@@ -1047,23 +1039,23 @@ function CHome({ onSwitch }) {
       <div className="topbar">
         <div>
           <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR · 教練</div>
-          <div style={{ fontSize:11, color:"var(--star-3)", marginTop:2, letterSpacing:".04em" }}>Coach Dashboard</div>
+          <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, letterSpacing:".04em" }}>Coach Dashboard</div>
         </div>
         <div className="avatar coach-av-header">{(profile?.name||"教").slice(0,1)}</div>
       </div>
       <div className="content">
         <div className="card-glass" style={{ marginBottom:14 }}>
-          <div style={{ fontFamily:"var(--font-display)", fontSize:20, fontWeight:600, letterSpacing:"-.01em" }}>{profile?.name||"教練"}</div>
-          <div style={{ fontSize:13, color:"var(--star-2)", marginTop:4 }}>負責全部 {students.length} 位學員</div>
+          <div style={{ fontFamily:"var(--font)", fontSize:20, fontWeight:600, letterSpacing:"-.01em" }}>{profile?.name||"教練"}</div>
+          <div style={{ fontSize:13, color:"var(--ink-2)", marginTop:4 }}>負責全部 {students.length} 位學員</div>
         </div>
         <div className="stats-grid">
-          <div className="stat-tile"><div className="stat-num" style={{ color:"var(--teal)" }}>{students.length}</div><div className="stat-lbl">全部學員</div></div>
+          <div className="stat-tile"><div className="stat-num" style={{ color:"var(--sage)" }}>{students.length}</div><div className="stat-lbl">全部學員</div></div>
           <div className="stat-tile"><div className="stat-num" style={{ color:"#9B8BF4" }}>—</div><div className="stat-lbl">課程模組</div></div>
         </div>
         <div className="sec-h">所有學員</div>
         <div className="card" style={{ padding:"6px 14px" }}>
           {students.length===0 ? (
-            <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, padding:"14px 0", lineHeight:1.65 }}>
+            <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, padding:"14px 0", lineHeight:1.65 }}>
               尚無學員<br /><span style={{ fontSize:12 }}>前往成員管理新增</span>
             </div>
           ) : students.map((s,i) => (
@@ -1098,7 +1090,7 @@ function CModules({ onSwitch, onModal }) {
         <button className="btn btn-primary btn-sm" onClick={()=>onModal("module")}><IcPlus />新增</button>
       </div>
       <div className="content">
-        <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:48, marginBottom:18, lineHeight:1.7 }}>
+        <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, marginBottom:18, lineHeight:1.7 }}>
           尚未建立課程模組<br /><span style={{ fontSize:12 }}>點右上角「新增」開始建立</span>
         </div>
         <button className="btn" style={{ width:"100%", justifyContent:"center" }} onClick={()=>onModal("module")}><IcPlus />新增第一個課程模組</button>
@@ -1126,7 +1118,7 @@ function CAssign({ onSwitch }) {
       </div>
       <div className="content">
         {students.length===0 ? (
-          <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:48, lineHeight:1.7 }}>
+          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, lineHeight:1.7 }}>
             尚無學員<br /><span style={{ fontSize:12 }}>請先在「成員管理」新增學員</span>
           </div>
         ) : (
@@ -1140,13 +1132,13 @@ function CAssign({ onSwitch }) {
             </div>
             {selStudent && (
               <>
-                <div style={{ fontSize:13, color:"var(--star-3)", marginBottom:12, lineHeight:1.6 }}>
-                  為 <strong style={{ color:"var(--star)" }}>{selStudent.name}</strong> 加入課程模組
+                <div style={{ fontSize:13, color:"var(--ink-3)", marginBottom:12, lineHeight:1.6 }}>
+                  為 <strong style={{ color:"var(--ink)" }}>{selStudent.name}</strong> 加入課程模組
                 </div>
                 <div className="sec-h">可用模組庫</div>
                 <div className="module-pool">
                   {pool.length===0
-                    ? <span style={{ fontSize:12, color:"var(--star-3)" }}>尚未建立課程模組，請先至「模組」頁面新增</span>
+                    ? <span style={{ fontSize:12, color:"var(--ink-3)" }}>尚未建立課程模組，請先至「模組」頁面新增</span>
                     : pool.map(p=><span key={p} className="m-chip" onClick={()=>setAssigned(a=>a.includes(p)?a:[...a,p])}>✦ {p}</span>)
                   }
                 </div>
@@ -1178,7 +1170,7 @@ function CRecords({ onSwitch, onModal }) {
         <button className="btn btn-primary btn-sm" onClick={()=>onModal("record")}><IcPlus />新增</button>
       </div>
       <div className="content">
-        <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:48, marginBottom:18, lineHeight:1.7 }}>
+        <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, marginBottom:18, lineHeight:1.7 }}>
           尚無上課記錄<br /><span style={{ fontSize:12 }}>點右上角「新增」記錄上課狀況</span>
         </div>
         <div className="sec-h">課程學習資料</div>
@@ -1216,8 +1208,8 @@ function CMembers({ onSwitch }) {
     } else { setResult({ok:false,msg:res.error}); }
   };
   const roleLabel = r => r==="coach"?"教練":"學員";
-  const rColor    = r => r==="coach"?"var(--teal)":"#A89CF4";
-  const rBg       = r => r==="coach"?"var(--teal-dim)":"var(--nebula-dim)";
+  const rColor    = r => r==="coach"?"var(--sage)":"#A89CF4";
+  const rBg       = r => r==="coach"?"var(--sage-pale)":"var(--slate-pale)";
   const rBorder   = r => r==="coach"?"rgba(15,184,154,.25)":"rgba(108,92,231,.25)";
   return (
     <div className="screen-enter">
@@ -1232,7 +1224,7 @@ function CMembers({ onSwitch }) {
         <div className="content">
           <div className="sec-h">所有成員（{members.length} 人）</div>
           {members.length===0 && (
-            <div style={{ textAlign:"center", color:"var(--star-3)", fontSize:13, marginTop:36, lineHeight:1.7 }}>
+            <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:36, lineHeight:1.7 }}>
               還沒有成員<br /><span style={{ fontSize:12 }}>點右上角「+ 新增成員」</span>
             </div>
           )}
@@ -1247,8 +1239,8 @@ function CMembers({ onSwitch }) {
                     <span style={{ fontSize:14, fontWeight:600, letterSpacing:"-.01em" }}>{m.name}</span>
                     <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:"var(--r-pill)", background:rBg(m.role), color:rColor(m.role), border:`1px solid ${rBorder(m.role)}` }}>{roleLabel(m.role)}</span>
                   </div>
-                  <div style={{ fontSize:11, color:"var(--star-3)" }}>{m.email}</div>
-                  {m.courseType && <div style={{ fontSize:11, color:"var(--star-3)", marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
+                  <div style={{ fontSize:11, color:"var(--ink-3)" }}>{m.email}</div>
+                  {m.courseType && <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
                 </div>
               </div>
             </div>
@@ -1258,9 +1250,9 @@ function CMembers({ onSwitch }) {
         <div className="content">
           {result && (
             <div style={{ padding:"11px 14px", borderRadius:"var(--r)", marginBottom:14, fontSize:13, textAlign:"center", lineHeight:1.5,
-              background:result.ok?"var(--teal-dim)":"rgba(224,97,78,.1)",
+              background:result.ok?"var(--sage-pale)":"rgba(224,97,78,.1)",
               border:`1px solid ${result.ok?"rgba(15,184,154,.25)":"rgba(224,97,78,.25)"}`,
-              color:result.ok?"var(--teal)":"var(--coral)" }}>{result.msg}</div>
+              color:result.ok?"var(--sage)":"var(--rust)" }}>{result.msg}</div>
           )}
           <form onSubmit={handleAdd}>
             <div className="input-label">角色</div>
@@ -1339,9 +1331,9 @@ function LoginScreen() {
 function NoAccessScreen({ user, logout }) {
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32 }}>
-      <div style={{ fontFamily:"var(--font-display)", fontSize:40, color:"var(--gold)", marginBottom:14 }}>✦</div>
-      <div style={{ fontFamily:"var(--font-display)", fontSize:20, fontWeight:600, color:"var(--gold)", marginBottom:10 }}>尚未取得存取權限</div>
-      <div style={{ fontSize:13, color:"var(--star-3)", textAlign:"center", lineHeight:1.75, marginBottom:28 }}>
+      <div style={{ fontFamily:"var(--font)", fontSize:40, color:"var(--gold)", marginBottom:14 }}>✦</div>
+      <div style={{ fontFamily:"var(--font)", fontSize:20, fontWeight:600, color:"var(--gold)", marginBottom:10 }}>尚未取得存取權限</div>
+      <div style={{ fontSize:13, color:"var(--ink-3)", textAlign:"center", lineHeight:1.75, marginBottom:28 }}>
         帳號（{user?.email}）<br />尚未被加入星辰聯盟系統。<br />請聯絡管理員開通您的權限。
       </div>
       <button className="btn" onClick={logout}>登出</button>
@@ -1390,8 +1382,8 @@ export default function App() {
       <>
         <Starfield />
         <div className="app" style={{ alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontFamily:"var(--font-display)", fontSize:36, color:"var(--gold)", marginBottom:14 }}>✦</div>
-          <div style={{ fontSize:13, color:"var(--star-3)", letterSpacing:".06em" }}>載入中…</div>
+          <div style={{ fontFamily:"var(--font)", fontSize:36, color:"var(--gold)", marginBottom:14 }}>✦</div>
+          <div style={{ fontSize:13, color:"var(--ink-3)", letterSpacing:".06em" }}>載入中…</div>
         </div>
       </>
     );
@@ -1446,7 +1438,7 @@ export default function App() {
             <span className={"role-badge "+(role==="coach"?"coach":"student")}>
               {role==="coach"?"COACH":"STUDENT"}
             </span>
-            <span style={{ fontSize:13, color:"var(--star-2)", fontWeight:500 }}>{displayName}</span>
+            <span style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>{displayName}</span>
             <button className="logout-btn" onClick={logout}>登出</button>
           </div>
         </div>

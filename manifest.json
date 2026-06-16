@@ -1,0 +1,29 @@
+{
+    "name": "iSTAR Alliance 星辰聯盟",
+    "short_name": "iSTAR",
+    "description": "星辰聯盟學員成長平台",
+    "start_url": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "theme_color": "#FAFAF7",
+    "background_color": "#FAFAF7",
+    "icons": [
+      {
+        "src": "/icons/icon-192.png",
+        "type": "image/png",
+        "sizes": "192x192",
+        "purpose": "any maskable"
+      },
+      {
+        "src": "/icons/icon-512.png",
+        "type": "image/png",
+        "sizes": "512x512",
+        "purpose": "any maskable"
+      },
+      {
+        "src": "/apple-touch-icon.png",
+        "type": "image/png",
+        "sizes": "180x180"
+      }
+    ]
+  }

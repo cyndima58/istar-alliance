@@ -3,19 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#0A0B14" />
+
+    <!-- 主題色（配合新明亮配色） -->
+    <meta name="theme-color" content="#FAFAF7" />
     <meta name="description" content="iSTAR Alliance 星辰聯盟 — 學員成長平台" />
 
     <!-- PWA iOS -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="iSTAR" />
-    <link rel="apple-touch-icon" href="/icons/icon-512.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    <!-- Google Fonts -->
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Google Fonts — Cormorant Garamond 全字重 + Noto Serif TC -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600&family=Noto+Serif+TC:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- 防止 FOUC：預設背景與文字色 -->
+    <style>
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: #FAFAF7;
+        color: #1C1A17;
+        font-family: 'Cormorant Garamond', 'Noto Serif TC', serif;
+      }
+    </style>
 
     <title>iSTAR Alliance — 星辰聯盟</title>
   </head>
