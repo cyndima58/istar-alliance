@@ -132,6 +132,7 @@ body {
   flex-shrink: 0;
 }
 .avatar.coach-av-header { background: var(--sage-pale); color: var(--sage); border-color: rgba(74,123,90,.25); }
+.coach-av { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font); font-size: 14px; font-weight: 600; flex-shrink: 0; }
 
 /* ── Screen animation ── */
 @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
@@ -279,7 +280,6 @@ body {
   border-bottom: 1px solid var(--cream-3);
 }
 .coach-row:last-child { border-bottom: none; }
-.coach-av { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font); font-size: 14px; font-weight: 600; flex-shrink: 0; }
 .coach-name { font-family: var(--font); font-size: 15px; font-weight: 500; letter-spacing: .01em; }
 .coach-tag { font-size: 12px; color: var(--ink-3); margin-top: 2px; font-style: italic; }
 
@@ -460,6 +460,31 @@ select.input-field { appearance: none; cursor: pointer; }
 .upload-hint { font-family:var(--font); font-size:12px; color:var(--ink-4); text-align:center; margin-top:8px; line-height:1.6; font-style:italic; }
 `;
 
+
+/* ════════════════════════════════════════
+   MACARON PALETTE — 頭像顏色系統
+════════════════════════════════════════ */
+const MACARON = [
+  { bg:"#F9E4E8", text:"#A0405A" }, // 玫瑰
+  { bg:"#FDE8D8", text:"#A0562A" }, // 杏桃
+  { bg:"#FEF3D0", text:"#8A6820" }, // 香草
+  { bg:"#E8F5E4", text:"#3A6B35" }, // 抹茶
+  { bg:"#D8EFF5", text:"#2A6478" }, // 薄荷
+  { bg:"#E4E8F9", text:"#3A4A8A" }, // 薰衣草
+  { bg:"#F0E4F9", text:"#6A3A8A" }, // 紫羅蘭
+  { bg:"#F9E4F3", text:"#8A3A70" }, // 荔枝
+  { bg:"#E4F5F0", text:"#2A6A5A" }, // 蘋果綠
+  { bg:"#F5EDE4", text:"#7A5030" }, // 焦糖
+];
+
+// 用名字產生固定色（相同名字永遠同色）
+function getAvatarColor(name = "") {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return MACARON[Math.abs(hash) % MACARON.length];
+}
 
 /* ════════════════════════════════════════
    DATA
@@ -836,7 +861,7 @@ function SHome({ onSwitch }) {
           <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR</div>
           <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, letterSpacing:".04em" }}>星辰聯盟</div>
         </div>
-        <div className="avatar">{name.slice(0,1)}</div>
+        <div className="avatar" style={(() => { const c = getAvatarColor(name); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{name.slice(0,1)}</div>
       </div>
       <div className="content">
         <div className="card-gold" style={{ marginBottom:14 }}>
@@ -903,7 +928,7 @@ function SCourses({ onSwitch }) {
     <div className="screen-enter">
       <div className="topbar">
         <div className="topbar-title">我的課程</div>
-        <div className="avatar">{(profile?.name||"?").slice(0,1)}</div>
+        <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||""); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{(profile?.name||"?").slice(0,1)}</div>
       </div>
       <div className="inner-tabs" style={{ padding:"0 16px" }}>
         {[["all","全部"],["ongoing","進行中"],["done","已完成"]].map(([k,l])=>(
@@ -951,7 +976,7 @@ function SGrowth({ onSwitch }) {
     <div className="screen-enter">
       <div className="topbar">
         <div className="topbar-title">成長路徑</div>
-        <div className="avatar">{(profile?.name||"?").slice(0,1)}</div>
+        <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||""); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{(profile?.name||"?").slice(0,1)}</div>
       </div>
       <div className="content">
         <div className="card-gold" style={{ marginBottom:14 }}>
@@ -989,14 +1014,14 @@ function SFeedback({ onSwitch }) {
     <div className="screen-enter">
       <div className="topbar">
         <div className="topbar-title">互動反饋</div>
-        <div className="avatar">{(profile?.name||"?").slice(0,1)}</div>
+        <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||""); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{(profile?.name||"?").slice(0,1)}</div>
       </div>
       <div className="content">
         <div className="sec-h">我的教練</div>
         <div className="card">
           {coachName ? (
             <div className="coach-row" style={{ borderBottom:"none" }}>
-              <div className="coach-av" style={{ background:"linear-gradient(135deg,#6C5CE7,#9B8BF4)" }}>{coachName.slice(0,2)}</div>
+              <div className="coach-av" style={(() => { const c = getAvatarColor(coachName); return { background: c.bg, color: c.text }; })()}>{coachName.slice(0,2)}</div>
               <div style={{ flex:1 }}>
                 <div className="coach-name">{coachName}<span className="badge badge-gold" style={{ fontSize:10, marginLeft:6 }}>主要聯絡</span></div>
                 <div className="coach-tag">{profile?.courseType||""}</div>
@@ -1041,7 +1066,7 @@ function CHome({ onSwitch }) {
           <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR · 教練</div>
           <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, letterSpacing:".04em" }}>Coach Dashboard</div>
         </div>
-        <div className="avatar coach-av-header">{(profile?.name||"教").slice(0,1)}</div>
+        <div className="avatar coach-av-header" style={(() => { const c = getAvatarColor(profile?.name||"教"); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{(profile?.name||"教").slice(0,1)}</div>
       </div>
       <div className="content">
         <div className="card-glass" style={{ marginBottom:14 }}>
@@ -1060,7 +1085,7 @@ function CHome({ onSwitch }) {
             </div>
           ) : students.map((s,i) => (
             <div key={s.uid} className="coach-row" style={i===students.length-1?{borderBottom:"none"}:{}}>
-              <div className="coach-av" style={{ background:"linear-gradient(135deg,#6C5CE7,#9B8BF4)", fontSize:12 }}>{s.name?.slice(0,2)||"??"}</div>
+              <div className="coach-av" style={(() => { const c = getAvatarColor(s.name||""); return { background: c.bg, color: c.text, fontSize:12 }; })()}>{s.name?.slice(0,2)||"??"}</div>
               <div style={{ flex:1 }}>
                 <div className="coach-name">{s.name}</div>
                 <div className="coach-tag">{s.courseType||""}</div>
@@ -1231,7 +1256,7 @@ function CMembers({ onSwitch }) {
           {members.map(m=>(
             <div key={m.uid} className="card card-sm" style={{ marginBottom:8 }}>
               <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <div className="coach-av" style={{ background:`linear-gradient(135deg,${m.role==="coach"?"#0FB89A,#0FD4B4":"#6C5CE7,#9B8BF4"})`, fontSize:12, flexShrink:0 }}>
+                <div className="coach-av" style={(() => { const c = getAvatarColor(m.name||""); return { background: c.bg, color: c.text, fontSize:12, flexShrink:0 }; })()}>
                   {m.name?.slice(0,2)||"??"}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
