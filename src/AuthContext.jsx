@@ -98,25 +98,19 @@ export function AuthProvider({ children }) {
   const addMember = async (formData) => {
     const {
       name, email, password, role: memberRole,
-      // 學員專用
-      birthdate, coachId, coachName, courseType, joinDate,
+      birthdate, coachName, courseType, joinDate,
     } = formData;
 
     try {
       const secondaryAuth = getSecondaryAuth();
-
-      // 用 secondary auth instance 建立帳號，不影響主教練
       const credential = await createUserWithEmailAndPassword(
         secondaryAuth,
         email.trim().toLowerCase(),
         password
       );
       const newUid = credential.user.uid;
-
-      // 建完後立刻登出 secondary（避免殘留狀態）
       await signOut(secondaryAuth);
 
-      // 寫入 Firestore — 學員和教練欄位分開
       const userData = {
         name,
         email: email.trim().toLowerCase(),
@@ -127,17 +121,14 @@ export function AuthProvider({ children }) {
       };
 
       if (memberRole === "student") {
-        // 學員專用欄位
-        userData.birthdate  = birthdate  || "";
-        userData.coachId    = coachId    || "";
-        userData.coachName  = coachName  || "";
-        userData.courseType = courseType || "";
-        userData.joinDate   = joinDate   || "";
+        userData.birthdate   = birthdate  || "";
+        userData.coachName   = coachName  || ""; // 選填，主要聯絡教練
+        userData.courseType  = courseType || "";
+        userData.joinDate    = joinDate   || "";
+        // 不再強制綁定 coachId，所有教練都可分配課程
       }
-      // 教練不需要上述欄位
 
       await setDoc(doc(db, "users", newUid), userData);
-
       return { success: true };
     } catch (e) {
       const msg = {
