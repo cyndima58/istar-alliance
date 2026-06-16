@@ -8,7 +8,7 @@ import {
 } from "firebase/auth";
 import {
   doc, getDoc, setDoc, collection,
-  query, where, getDocs, serverTimestamp,
+  query, where, getDocs, addDoc, serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -151,10 +151,110 @@ export function AuthProvider({ children }) {
     }
   };
 
+  /* ── 新增課程模組 ── */
+  const addModule = async (moduleData) => {
+    try {
+      const ref = await addDoc(collection(db, "modules"), {
+        ...moduleData,
+        coachId:   auth.currentUser?.uid || "",
+        coachName: profile?.name || "",
+        createdAt: serverTimestamp(),
+      });
+      return { success: true, id: ref.id };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  };
+
+  /* ── 取得所有課程模組 ── */
+  const fetchModules = async () => {
+    try {
+      const snap = await getDocs(collection(db, "modules"));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch {
+      return [];
+    }
+  };
+
+  /* ── 新增上課記錄 ── */
+  const addRecord = async (recordData) => {
+    try {
+      const ref = await addDoc(collection(db, "records"), {
+        ...recordData,
+        coachId:   auth.currentUser?.uid || "",
+        coachName: profile?.name || "",
+        createdAt: serverTimestamp(),
+      });
+      return { success: true, id: ref.id };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  };
+
+  /* ── 取得上課記錄 ── */
+  const fetchRecords = async () => {
+    try {
+      const snap = await getDocs(collection(db, "records"));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch {
+      return [];
+    }
+  };
+
+  /* ── 編輯成員資料 ── */
+  const updateMember = async (uid, data) => {
+    try {
+      await setDoc(doc(db, "users", uid), data, { merge: true });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  };
+
+  /* ── 刪除成員（僅 Firestore 資料，Auth 帳號保留）── */
+  const deleteMember = async (uid) => {
+    try {
+      const { deleteDoc } = await import("firebase/firestore");
+      await deleteDoc(doc(db, "users", uid));
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  };
+
+  /* ── 新增課程模組內的學習資料（連結）── */
+  const addModuleResource = async (moduleId, resource) => {
+    try {
+      await addDoc(collection(db, "modules", moduleId, "resources"), {
+        ...resource,
+        addedBy:   profile?.name || "",
+        addedRole: role || "",
+        createdAt: serverTimestamp(),
+      });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  };
+
+  /* ── 取得課程模組的學習資料 ── */
+  const fetchModuleResources = async (moduleId) => {
+    try {
+      const snap = await getDocs(collection(db, "modules", moduleId, "resources"));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch {
+      return [];
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user, profile, role, loading, error, setError,
-      loginWithEmail, logout, addMember, fetchMembers,
+      loginWithEmail, logout,
+      addMember, fetchMembers, updateMember, deleteMember,
+      addModule, fetchModules,
+      addRecord, fetchRecords,
+      addModuleResource, fetchModuleResources,
     }}>
       {children}
     </AuthContext.Provider>

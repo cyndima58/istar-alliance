@@ -588,24 +588,53 @@ function Toggle({ label, icon: Icon, defaultOn=true, noBorder=false }) {
 }
 
 /* ── Resource Upload Panel ── */
-function ResourcePanel({ role: userRole }) {
-  const [tab, setTab]       = useState("link");
-  const [linkVal, setLink]  = useState("");
-  const [linkName, setName] = useState("");
-  const [resources, setRes] = useState([]);
+function ResourcePanel({ moduleId }) {
+  const { role: userRole, addModuleResource, fetchModuleResources } = useAuth();
+  const [tab,       setTab]     = useState("link");
+  const [linkVal,   setLink]    = useState("");
+  const [linkName,  setName]    = useState("");
+  const [resources, setRes]     = useState([]);
+  const [saving,    setSaving]  = useState(false);
 
-  const addLink = () => {
+  useEffect(() => {
+    if (moduleId) {
+      fetchModuleResources(moduleId).then(list => {
+        setRes(list.map(r => ({
+          type: r.type || "link",
+          name: r.name || r.url,
+          url:  r.url  || "",
+          size: r.size || "",
+          by:   r.addedRole || userRole,
+          ts:   r.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || "—",
+          id:   r.id,
+        })));
+      }).catch(() => {});
+    }
+  }, [moduleId]);
+
+  const addLink = async () => {
     if (!linkVal.trim()) return;
-    const url = linkVal.trim().startsWith("http") ? linkVal.trim() : "https://" + linkVal.trim();
-    setRes(r => [...r, { type:"link", name: linkName.trim() || url, url, by: userRole, ts: new Date().toLocaleDateString("zh-TW") }]);
-    setLink(""); setName("");
+    const url  = linkVal.trim().startsWith("http") ? linkVal.trim() : "https://" + linkVal.trim();
+    const name = linkName.trim() || url;
+    setSaving(true);
+    if (moduleId) {
+      await addModuleResource(moduleId, { type:"link", name, url });
+    }
+    setRes(r => [...r, { type:"link", name, url, by: userRole, ts: new Date().toLocaleDateString("zh-TW") }]);
+    setLink(""); setName(""); setSaving(false);
   };
 
   const handleFile = e => {
     const files = Array.from(e.target.files || []);
     files.forEach(f => {
       const isImg = f.type.startsWith("image/");
-      setRes(r => [...r, { type: isImg ? "img" : "file", name: f.name, size: (f.size/1024).toFixed(0)+"KB", by: userRole, ts: new Date().toLocaleDateString("zh-TW") }]);
+      setRes(r => [...r, {
+        type: isImg ? "img" : "file",
+        name: f.name,
+        size: (f.size/1024).toFixed(0) + "KB",
+        by:   userRole,
+        ts:   new Date().toLocaleDateString("zh-TW"),
+      }]);
     });
     e.target.value = "";
   };
@@ -622,11 +651,16 @@ function ResourcePanel({ role: userRole }) {
       {tab === "link" && (
         <>
           <div className="input-label">說明名稱（選填）</div>
-          <input className="input-field" placeholder="例：本週參考文章" value={linkName} onChange={e => setName(e.target.value)} style={{ marginBottom:6 }} />
+          <input className="input-field" placeholder="例：本週參考文章"
+            value={linkName} onChange={e => setName(e.target.value)}
+            style={{ marginBottom:6 }} />
           <div className="input-label">網址連結</div>
-          <input className="input-field" placeholder="https://..." value={linkVal} onChange={e => setLink(e.target.value)} style={{ marginBottom:6 }} />
-          <button className="btn btn-primary" style={{ width:"100%", justifyContent:"center" }} onClick={addLink}>
-            <IcPlus /> 加入連結
+          <input className="input-field" placeholder="https://..."
+            value={linkVal} onChange={e => setLink(e.target.value)}
+            style={{ marginBottom:6 }} />
+          <button className="btn btn-primary" style={{ width:"100%", justifyContent:"center" }}
+            onClick={addLink} disabled={saving}>
+            <IcPlus />{saving ? "儲存中…" : "加入連結"}
           </button>
         </>
       )}
@@ -634,32 +668,35 @@ function ResourcePanel({ role: userRole }) {
       {(tab === "file" || tab === "img") && (
         <>
           <label style={{ display:"block", width:"100%", cursor:"pointer" }}>
-            <div style={{ border:"1.5px dashed rgba(255,255,255,.12)", borderRadius:"var(--r)", padding:"20px 12px", textAlign:"center", background:"var(--cream-3)" }}>
+            <div style={{ border:"1.5px dashed var(--cream-4)", borderRadius:"var(--r)", padding:"20px 12px", textAlign:"center", background:"var(--cream-3)" }}>
               <div style={{ fontSize:22, marginBottom:6 }}>{tab==="img" ? "🖼" : "📎"}</div>
-              <div style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>點此上傳{tab==="img"?"圖片":"檔案"}</div>
+              <div style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>點此上傳{tab==="img" ? "圖片" : "檔案"}</div>
               <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:4 }}>
                 {tab==="img" ? "支援 JPG、PNG、GIF、WEBP" : "支援 PDF、DOC、XLS、PPT 等"}
               </div>
             </div>
-            <input type="file" style={{ display:"none" }} accept={tab==="img"?"image/*":".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"} multiple onChange={handleFile} />
+            <input type="file" style={{ display:"none" }}
+              accept={tab==="img" ? "image/*" : ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"}
+              multiple onChange={handleFile} />
           </label>
-          <div className="upload-hint">
-            ⚠ 目前為本地預覽，正式部署需整合 Firebase Storage
-          </div>
+          <div className="upload-hint">⚠ 檔案上傳需整合 Firebase Storage（即將支援）</div>
         </>
       )}
 
       {resources.length > 0 && (
         <div className="resource-list" style={{ marginTop:12 }}>
           {resources.map((r, i) => (
-            <div key={i} className="resource-item">
+            <div key={r.id || i} className="resource-item">
               <div className={"resource-icon " + r.type}>
                 {r.type==="link" ? <IcLink /> : r.type==="img" ? <IcImg /> : <IcFile />}
               </div>
               <div style={{ flex:1, minWidth:0 }}>
                 <div className="resource-name" style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {r.type==="link"
-                    ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color:"inherit", textDecoration:"none" }}>{r.name}</a>
+                    ? <a href={r.url} target="_blank" rel="noopener noreferrer"
+                        style={{ color:"var(--ink)", textDecoration:"underline", textDecorationColor:"var(--gold)" }}>
+                        {r.name}
+                      </a>
                     : r.name
                   }
                 </div>
@@ -667,14 +704,20 @@ function ResourcePanel({ role: userRole }) {
                   {r.size ? r.size + " · " : ""}{r.by === "coach" ? "教練上傳" : "學員上傳"} · {r.ts}
                 </div>
               </div>
-              <button onClick={() => setRes(res => res.filter((_,j)=>j!==i))} style={{ border:"none",background:"none",color:"var(--ink-3)",cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1 }}>×</button>
+              <button onClick={() => setRes(res => res.filter((_,j) => j!==i))}
+                style={{ border:"none", background:"none", color:"var(--ink-4)", cursor:"pointer", fontSize:18, padding:"0 2px", lineHeight:1 }}>
+                ×
+              </button>
             </div>
           ))}
         </div>
       )}
 
       {resources.length === 0 && (
-        <div className="resource-empty">尚無學習資料<br/><span style={{ fontSize:11 }}>教練與學員都可以在這裡上傳資料</span></div>
+        <div className="resource-empty">
+          尚無學習資料<br />
+          <span style={{ fontSize:11 }}>教練與學員都可以在這裡上傳連結或資料</span>
+        </div>
       )}
     </div>
   );
@@ -780,24 +823,92 @@ function GrowthItem({ s }) {
    MODALS
 ════════════════════════════════════════ */
 function ModalAddModule({ onClose }) {
+  const { addModule } = useAuth();
+  const [form, setForm] = useState({
+    title: "", outline: "", duration: "",
+    method: ["線上"], stage: ["定位"],
+  });
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
+
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const toggleOption = (key, val) =>
+    setForm(f => {
+      const arr = f[key];
+      return { ...f, [key]: arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val] };
+    });
+
+  const handleSave = async () => {
+    if (!form.title.trim()) { setError("請填寫課程主題"); return; }
+    setLoading(true); setError("");
+    const res = await addModule({
+      title:    form.title.trim(),
+      outline:  form.outline.trim(),
+      duration: form.duration.trim(),
+      method:   form.method,
+      stage:    form.stage,
+    });
+    setLoading(false);
+    if (res.success) {
+      onClose(true); // true = 新增成功，通知父層重新載入
+    } else {
+      setError("儲存失敗，請再試一次。");
+    }
+  };
+
   return (
-    <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget)onClose(); }}>
+    <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) onClose(false); }}>
       <div className="modal-sheet">
         <div className="modal-handle" />
         <div className="modal-title">新增課程模組</div>
-        <div className="input-label">課程主題</div>
-        <input className="input-field" placeholder="例：商業模式設計工作坊" />
+
+        {error && (
+          <div style={{ background:"var(--rust-pale)", border:"1px solid rgba(139,58,42,.2)", borderRadius:"var(--r)", padding:"10px 14px", fontSize:13, color:"var(--rust)", marginBottom:14 }}>
+            {error}
+          </div>
+        )}
+
+        <div className="input-label">課程主題 *</div>
+        <input className="input-field" placeholder="例：商業模式設計工作坊"
+          value={form.title} onChange={e => setField("title", e.target.value)} />
+
         <div className="input-label">大綱</div>
-        <textarea className="input-field" rows={3} placeholder={"第一步：…\n第二步：…"} />
+        <textarea className="input-field" rows={3}
+          placeholder={"第一步：…\n第二步：…"}
+          value={form.outline} onChange={e => setField("outline", e.target.value)} />
+
         <div className="input-label">時間</div>
-        <input className="input-field" placeholder="例：3小時 / 2天" />
+        <input className="input-field" placeholder="例：3小時 / 2天"
+          value={form.duration} onChange={e => setField("duration", e.target.value)} />
+
         <div className="input-label">上課方式</div>
-        <ChipGroup options={["線上","實體","混合","非同步"]} defaultSel={["線上"]} />
+        <div className="chip-group">
+          {["線上","實體","混合","非同步"].map(o => (
+            <div key={o}
+              className={"chip" + (form.method.includes(o) ? " sel" : "")}
+              onClick={() => toggleOption("method", o)}>
+              {o}
+            </div>
+          ))}
+        </div>
+
         <div className="input-label">對應成長階段</div>
-        <ChipGroup options={["探索","自我認知","內化","定位","方向","小驗","實作","市場","共創"]} defaultSel={["定位"]} />
+        <div className="chip-group">
+          {["探索","自我認知","內化","定位","方向","小驗","實作","市場","共創"].map(o => (
+            <div key={o}
+              className={"chip" + (form.stage.includes(o) ? " sel" : "")}
+              onClick={() => toggleOption("stage", o)}>
+              {o}
+            </div>
+          ))}
+        </div>
+
         <div className="btn-row">
-          <button className="btn" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" onClick={onClose}>✦ 儲存模組</button>
+          <button className="btn" onClick={() => onClose(false)}>取消</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
+            {loading ? "儲存中…" : "✦ 儲存模組"}
+          </button>
         </div>
       </div>
     </div>
@@ -805,34 +916,107 @@ function ModalAddModule({ onClose }) {
 }
 
 function ModalAddRecord({ onClose }) {
-  const { fetchMembers } = useAuth();
-  const [students, setStudents] = useState([]);
+  const { fetchMembers, addRecord } = useAuth();
+  const [students,  setStudents]  = useState([]);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState("");
+  const [form, setForm] = useState({
+    studentUid:   "",
+    studentName:  "",
+    date:         new Date().toISOString().slice(0,10),
+    topic:        "",
+    feedback:     "",
+    privateNote:  "",
+    visibleStudent: true,
+    visibleCoach:   true,
+  });
+
   useEffect(() => {
-    fetchMembers().then(all => setStudents(all.filter(m => m.role==="student"))).catch(() => {});
+    fetchMembers()
+      .then(all => setStudents(all.filter(m => m.role === "student")))
+      .catch(() => {});
   }, []);
+
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.studentUid) { setError("請選擇學員"); return; }
+    if (!form.topic.trim()) { setError("請填寫課程主題"); return; }
+    setLoading(true); setError("");
+    const res = await addRecord({
+      studentUid:     form.studentUid,
+      studentName:    form.studentName,
+      date:           form.date,
+      topic:          form.topic.trim(),
+      feedback:       form.feedback.trim(),
+      privateNote:    form.privateNote.trim(),
+      visibleStudent: form.visibleStudent,
+      visibleCoach:   form.visibleCoach,
+    });
+    setLoading(false);
+    if (res.success) {
+      onClose(true);
+    } else {
+      setError("儲存失敗，請再試一次。");
+    }
+  };
+
   return (
-    <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget)onClose(); }}>
+    <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) onClose(false); }}>
       <div className="modal-sheet">
         <div className="modal-handle" />
         <div className="modal-title">新增上課記錄</div>
-        <div className="input-label">學員</div>
-        <select className="input-field">
+
+        {error && (
+          <div style={{ background:"var(--rust-pale)", border:"1px solid rgba(139,58,42,.2)", borderRadius:"var(--r)", padding:"10px 14px", fontSize:13, color:"var(--rust)", marginBottom:14 }}>
+            {error}
+          </div>
+        )}
+
+        <div className="input-label">學員 *</div>
+        <select className="input-field"
+          value={form.studentUid}
+          onChange={e => {
+            const s = students.find(x => x.uid === e.target.value);
+            setField("studentUid", e.target.value);
+            setField("studentName", s?.name || "");
+          }}>
           <option value="">— 選擇學員 —</option>
           {students.map(s => <option key={s.uid} value={s.uid}>{s.name}</option>)}
         </select>
+
         <div className="input-label">上課日期</div>
-        <input className="input-field" type="date" defaultValue={new Date().toISOString().slice(0,10)} />
-        <div className="input-label">課程主題</div>
-        <input className="input-field" placeholder="例：個人品牌定位工作坊" />
+        <input className="input-field" type="date"
+          value={form.date} onChange={e => setField("date", e.target.value)} />
+
+        <div className="input-label">課程主題 *</div>
+        <input className="input-field" placeholder="例：個人品牌定位工作坊"
+          value={form.topic} onChange={e => setField("topic", e.target.value)} />
+
         <div className="input-label">給學員的回饋</div>
-        <textarea className="input-field" rows={2} placeholder="課後鼓勵與建議…" />
-        <div className="input-label">教練私密備註</div>
-        <textarea className="input-field" rows={2} placeholder="教練群內部觀察…" />
-        <Toggle label="學員可見"   icon={IcEye}   defaultOn={true} />
-        <Toggle label="教練群可見" icon={IcUsers} defaultOn={true} noBorder={true} />
+        <textarea className="input-field" rows={2} placeholder="課後鼓勵與建議…"
+          value={form.feedback} onChange={e => setField("feedback", e.target.value)} />
+
+        <div className="input-label">教練私密備註（學員不可見）</div>
+        <textarea className="input-field" rows={2} placeholder="教練群內部觀察…"
+          value={form.privateNote} onChange={e => setField("privateNote", e.target.value)} />
+
+        <div className="toggle-row">
+          <span className="toggle-lbl"><IcEye />學員可見</span>
+          <button className={"toggle-sw"+(form.visibleStudent?" on":"")}
+            onClick={() => setField("visibleStudent", !form.visibleStudent)} />
+        </div>
+        <div className="toggle-row" style={{ borderBottom:"none" }}>
+          <span className="toggle-lbl"><IcUsers />教練群可見</span>
+          <button className={"toggle-sw"+(form.visibleCoach?" on":"")}
+            onClick={() => setField("visibleCoach", !form.visibleCoach)} />
+        </div>
+
         <div className="btn-row" style={{ marginTop:14 }}>
-          <button className="btn" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" onClick={onClose}>✦ 儲存記錄</button>
+          <button className="btn" onClick={() => onClose(false)}>取消</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
+            {loading ? "儲存中…" : "✦ 儲存記錄"}
+          </button>
         </div>
       </div>
     </div>
@@ -956,7 +1140,7 @@ function SCourses({ onSwitch }) {
                   <button className="btn btn-sm">查看課程模組</button>
                   <button className="btn btn-primary btn-sm">聯絡教練</button>
                 </div>
-                <ResourcePanel role="student" />
+                <ResourcePanel moduleId={null} />
               </div>
             )}
             {activeTab==="done" && (
@@ -1107,18 +1291,87 @@ function CHome({ onSwitch }) {
   );
 }
 
+function ModuleCard({ m, stageColors }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div key={m.id} className="mod-card" style={{ borderLeftColor: stageColors[m.stage?.[0]] || "var(--gold)", marginBottom:10 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", cursor:"pointer" }}
+        onClick={() => setOpen(o => !o)}>
+        <div style={{ flex:1 }}>
+          <div className="mod-tags">
+            {(m.stage||[]).map(s => (
+              <span key={s} className="badge" style={{ background:"var(--gold-pale)", color:"var(--gold)", border:"1px solid var(--gold-line)", fontSize:10 }}>{s}</span>
+            ))}
+            {m.duration && (
+              <span className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>
+            )}
+            {(m.method||[]).map(mt => (
+              <span key={mt} className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>{mt}</span>
+            ))}
+          </div>
+          <div className="mod-title">{m.title}</div>
+          {m.outline && <div className="mod-outline">{m.outline}</div>}
+          {m.coachName && (
+            <div style={{ fontSize:11, color:"var(--ink-4)", marginTop:6, fontStyle:"italic" }}>建立者：{m.coachName}</div>
+          )}
+        </div>
+        <div style={{ fontSize:16, color:"var(--ink-4)", marginLeft:10, marginTop:4, flexShrink:0 }}>
+          {open ? "▲" : "▼"}
+        </div>
+      </div>
+      {/* 展開：課程學習資料 */}
+      {open && (
+        <div style={{ borderTop:"1px solid var(--cream-3)", marginTop:12, paddingTop:4 }}>
+          <ResourcePanel moduleId={m.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CModules({ onSwitch, onModal }) {
+  const { fetchModules } = useAuth();
+  const [modules,    setModules]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchModules().then(all => {
+      setModules(all);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [refreshKey]);
+
+  const stageColors = {
+    "探索":"var(--gold)","自我認知":"var(--slate)","內化":"var(--slate)",
+    "定位":"var(--gold)","方向":"var(--slate)","小驗":"var(--sage)",
+    "實作":"var(--rust)","市場":"var(--rust)","共創":"var(--gold)",
+  };
+
+  const handleModal = () => onModal("module", () => setRefreshKey(k => k + 1));
+
   return (
     <div className="screen-enter">
       <div className="topbar">
         <div className="topbar-title">課程模組</div>
-        <button className="btn btn-primary btn-sm" onClick={()=>onModal("module")}><IcPlus />新增</button>
+        <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增</button>
       </div>
       <div className="content">
-        <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, marginBottom:18, lineHeight:1.7 }}>
-          尚未建立課程模組<br /><span style={{ fontSize:12 }}>點右上角「新增」開始建立</span>
-        </div>
-        <button className="btn" style={{ width:"100%", justifyContent:"center" }} onClick={()=>onModal("module")}><IcPlus />新增第一個課程模組</button>
+        {loading ? (
+          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48 }}>載入中…</div>
+        ) : modules.length === 0 ? (
+          <>
+            <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, marginBottom:18, lineHeight:1.7 }}>
+              尚未建立課程模組<br /><span style={{ fontSize:12, fontStyle:"italic" }}>點右上角「新增」開始建立</span>
+            </div>
+            <button className="btn" style={{ width:"100%", justifyContent:"center" }} onClick={handleModal}>
+              <IcPlus />新增第一個課程模組
+            </button>
+          </>
+        ) : (
+          modules.map(m => <ModuleCard key={m.id} m={m} stageColors={stageColors} />)
+        )}
       </div>
       <BottomNav tabs={C_TABS} active="modules" onSwitch={onSwitch} />
     </div>
@@ -1126,14 +1379,16 @@ function CModules({ onSwitch, onModal }) {
 }
 
 function CAssign({ onSwitch }) {
-  const { profile, fetchMembers } = useAuth();
+  const { profile, fetchMembers, fetchModules } = useAuth();
   const [students,   setStudents]   = useState([]);
+  const [modulePool, setModulePool] = useState([]);
   const [selStudent, setSelStudent] = useState(null);
   const [assigned,   setAssigned]   = useState([]);
-  const pool = [];
+
   useEffect(() => {
     if (!profile?.uid) return;
     fetchMembers().then(all => setStudents(all.filter(m=>m.role==="student"))).catch(()=>{});
+    fetchModules().then(all => setModulePool(all)).catch(()=>{});
   }, [profile?.uid]);
   return (
     <div className="screen-enter">
@@ -1162,16 +1417,23 @@ function CAssign({ onSwitch }) {
                 </div>
                 <div className="sec-h">可用模組庫</div>
                 <div className="module-pool">
-                  {pool.length===0
-                    ? <span style={{ fontSize:12, color:"var(--ink-3)" }}>尚未建立課程模組，請先至「模組」頁面新增</span>
-                    : pool.map(p=><span key={p} className="m-chip" onClick={()=>setAssigned(a=>a.includes(p)?a:[...a,p])}>✦ {p}</span>)
+                  {modulePool.length === 0
+                    ? <span style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic" }}>尚未建立課程模組，請先至「模組」頁面新增</span>
+                    : modulePool.map(m => (
+                        <span key={m.id} className="m-chip"
+                          onClick={() => setAssigned(a => a.find(x=>x.id===m.id) ? a : [...a, m])}>
+                          ✦ {m.title}
+                        </span>
+                      ))
                   }
                 </div>
                 <div className="sec-h">{selStudent.name} 的專屬課程</div>
                 <div className="drop-zone">
                   <div className="drop-label">↑ 點擊上方模組加入</div>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                    {assigned.map(a=><span key={a} className="m-chip assigned">✓ {a}</span>)}
+                    {assigned.map(a => (
+                      <span key={a.id} className="m-chip assigned">✓ {a.title}</span>
+                    ))}
                   </div>
                 </div>
                 <div className="btn-row" style={{ marginTop:12 }}>
@@ -1188,18 +1450,68 @@ function CAssign({ onSwitch }) {
 }
 
 function CRecords({ onSwitch, onModal }) {
+  const { fetchRecords } = useAuth();
+  const [records,    setRecords]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchRecords().then(all => {
+      // 依日期倒序排列
+      setRecords(all.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [refreshKey]);
+
+  const handleModal = () => onModal("record", () => setRefreshKey(k => k + 1));
+
   return (
     <div className="screen-enter">
       <div className="topbar">
         <div className="topbar-title">上課記錄</div>
-        <button className="btn btn-primary btn-sm" onClick={()=>onModal("record")}><IcPlus />新增</button>
+        <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增</button>
       </div>
       <div className="content">
-        <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, marginBottom:18, lineHeight:1.7 }}>
-          尚無上課記錄<br /><span style={{ fontSize:12 }}>點右上角「新增」記錄上課狀況</span>
-        </div>
-        <div className="sec-h">課程學習資料</div>
-        <ResourcePanel role="coach" />
+        {loading ? (
+          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48 }}>載入中…</div>
+        ) : records.length === 0 ? (
+          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, lineHeight:1.7 }}>
+            尚無上課記錄<br /><span style={{ fontSize:12, fontStyle:"italic" }}>點右上角「新增」記錄上課狀況</span>
+          </div>
+        ) : (
+          records.map(r => (
+            <div key={r.id} className="card" style={{ marginBottom:10 }}>
+              {/* 標題列 */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                <div>
+                  <div style={{ fontSize:15, fontWeight:600, fontFamily:"var(--font)" }}>{r.topic}</div>
+                  <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>
+                    {r.date} · {r.studentName || "—"} · {r.coachName || "—"}
+                  </div>
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"flex-end", flexShrink:0, marginLeft:8 }}>
+                  {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:10 }}>學員可見</span>}
+                  {r.visibleCoach   && <span className="badge badge-nebula" style={{ fontSize:10 }}>教練可見</span>}
+                </div>
+              </div>
+              {/* 給學員的回饋 */}
+              {r.feedback && (
+                <div className="record-note">
+                  <div className="record-note-label" style={{ color:"var(--sage)" }}>給學員的回饋</div>
+                  {r.feedback}
+                </div>
+              )}
+              {/* 教練私密備註 */}
+              {r.privateNote && (
+                <div className="record-note coach-only" style={{ marginTop:6 }}>
+                  <div className="record-note-label" style={{ color:"var(--gold)" }}>教練私密備註</div>
+                  {r.privateNote}
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
       <BottomNav tabs={C_TABS} active="records" onSwitch={onSwitch} />
     </div>
@@ -1207,65 +1519,169 @@ function CRecords({ onSwitch, onModal }) {
 }
 
 function CMembers({ onSwitch }) {
-  const { addMember, fetchMembers, profile } = useAuth();
-  const [members, setMembers] = useState([]);
-  const [tab,     setTab]     = useState("list");
-  const [loading, setLoading] = useState(false);
-  const [result,  setResult]  = useState(null);
-  const [form, setForm] = useState({
+  const { addMember, fetchMembers, updateMember, deleteMember, profile } = useAuth();
+  const [members,   setMembers]   = useState([]);
+  const [tab,       setTab]       = useState("list");
+  const [loading,   setLoading]   = useState(false);
+  const [result,    setResult]    = useState(null);
+  const [editTarget, setEditTarget] = useState(null); // 編輯中的成員
+  const [confirmDel, setConfirmDel] = useState(null); // 待確認刪除的 uid
+
+  const blankForm = {
     name:"", email:"", password:"", birthdate:"",
     coachName: profile?.name||"", courseType:"個人賦能班",
     joinDate: new Date().toISOString().slice(0,10), role:"student",
-  });
+  };
+  const [form, setForm] = useState(blankForm);
+
+  const loadMembers = () => fetchMembers().then(setMembers).catch(() => {});
+
   useEffect(() => {
-    if (tab==="list") fetchMembers().then(setMembers).catch(()=>{});
+    if (tab === "list") loadMembers();
   }, [tab]);
-  const setField = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // 新增
   const handleAdd = async e => {
     e.preventDefault();
-    if (!form.name||!form.email||!form.password) { setResult({ok:false,msg:"姓名、Email、密碼為必填。"}); return; }
+    if (!form.name || !form.email || !form.password) {
+      setResult({ ok:false, msg:"姓名、Email、密碼為必填。" }); return;
+    }
     setLoading(true); setResult(null);
-    const res = await addMember({...form});
+    const res = await addMember({ ...form });
     setLoading(false);
     if (res.success) {
-      setResult({ok:true,msg:`${form.name} 已成功新增！`});
-      setForm({ name:"", email:"", password:"", birthdate:"", coachName:profile?.name||"", courseType:"個人賦能班", joinDate:new Date().toISOString().slice(0,10), role:form.role });
-    } else { setResult({ok:false,msg:res.error}); }
+      setResult({ ok:true, msg:`${form.name} 已成功新增！` });
+      setForm({ ...blankForm, role: form.role });
+    } else {
+      setResult({ ok:false, msg: res.error });
+    }
   };
-  const roleLabel = r => r==="coach"?"教練":"學員";
-  const rColor    = r => r==="coach"?"var(--sage)":"#A89CF4";
-  const rBg       = r => r==="coach"?"var(--sage-pale)":"var(--slate-pale)";
-  const rBorder   = r => r==="coach"?"rgba(15,184,154,.25)":"rgba(108,92,231,.25)";
+
+  // 進入編輯模式
+  const startEdit = m => {
+    setEditTarget(m);
+    setForm({
+      name:       m.name       || "",
+      email:      m.email      || "",
+      password:   "",
+      birthdate:  m.birthdate  || "",
+      coachName:  m.coachName  || "",
+      courseType: m.courseType || "個人賦能班",
+      joinDate:   m.joinDate   || "",
+      role:       m.role       || "student",
+    });
+    setTab("add");
+    setResult(null);
+  };
+
+  // 儲存編輯
+  const handleEdit = async e => {
+    e.preventDefault();
+    if (!form.name) { setResult({ ok:false, msg:"姓名為必填。" }); return; }
+    setLoading(true); setResult(null);
+    const data = {
+      name:       form.name,
+      birthdate:  form.birthdate,
+      coachName:  form.coachName,
+      courseType: form.courseType,
+      joinDate:   form.joinDate,
+    };
+    const res = await updateMember(editTarget.uid, data);
+    setLoading(false);
+    if (res.success) {
+      setResult({ ok:true, msg:`${form.name} 資料已更新！` });
+      setEditTarget(null);
+      loadMembers();
+    } else {
+      setResult({ ok:false, msg:"更新失敗，請再試一次。" });
+    }
+  };
+
+  // 刪除確認
+  const handleDelete = async uid => {
+    const res = await deleteMember(uid);
+    setConfirmDel(null);
+    if (res.success) {
+      setMembers(ms => ms.filter(m => m.uid !== uid));
+    }
+  };
+
+  const roleLabel = r => r === "coach" ? "教練" : "學員";
+  const rColor    = r => r === "coach" ? "var(--sage)"      : "var(--slate)";
+  const rBg       = r => r === "coach" ? "var(--sage-pale)" : "var(--slate-pale)";
+  const rBorder   = r => r === "coach" ? "rgba(74,123,90,.22)" : "rgba(58,74,107,.18)";
+
+  const isEdit = !!editTarget;
+
   return (
     <div className="screen-enter">
+      {/* 確認刪除 Dialog */}
+      {confirmDel && (
+        <div style={{ position:"absolute", inset:0, background:"rgba(28,26,23,.5)", backdropFilter:"blur(6px)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div style={{ background:"var(--cream)", border:"1px solid var(--cream-3)", borderRadius:"var(--r-xl)", padding:"26px 24px", width:"100%", maxWidth:320 }}>
+            <div style={{ fontFamily:"var(--font)", fontSize:18, fontWeight:600, marginBottom:10 }}>確認刪除</div>
+            <div style={{ fontSize:14, color:"var(--ink-2)", lineHeight:1.65, marginBottom:20 }}>
+              確定要刪除 <strong>{members.find(m => m.uid === confirmDel)?.name}</strong> 嗎？<br />
+              <span style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic" }}>此動作只會刪除系統資料，登入帳號仍保留。</span>
+            </div>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
+              <button className="btn" style={{ background:"var(--rust-pale)", color:"var(--rust)", borderColor:"rgba(139,58,42,.2)" }}
+                onClick={() => handleDelete(confirmDel)}>確認刪除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="topbar">
         <div className="topbar-title">成員管理</div>
-        <button className={tab==="add"?"btn btn-primary btn-sm":"btn btn-sm"}
-          onClick={()=>{setTab(t=>t==="add"?"list":"add");setResult(null);}}>
-          {tab==="add"?"← 返回":"+ 新增成員"}
+        <button
+          className={tab === "add" ? "btn btn-primary btn-sm" : "btn btn-sm"}
+          onClick={() => {
+            if (tab === "add") { setTab("list"); setEditTarget(null); setResult(null); }
+            else { setForm(blankForm); setEditTarget(null); setTab("add"); setResult(null); }
+          }}>
+          {tab === "add" ? "← 返回" : "+ 新增成員"}
         </button>
       </div>
-      {tab==="list" ? (
+
+      {tab === "list" ? (
         <div className="content">
           <div className="sec-h">所有成員（{members.length} 人）</div>
-          {members.length===0 && (
+          {members.length === 0 && (
             <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:36, lineHeight:1.7 }}>
               還沒有成員<br /><span style={{ fontSize:12 }}>點右上角「+ 新增成員」</span>
             </div>
           )}
-          {members.map(m=>(
+          {members.map(m => (
             <div key={m.uid} className="card card-sm" style={{ marginBottom:8 }}>
               <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                 <div className="coach-av" style={(() => { const c = getAvatarColor(m.name||""); return { background: c.bg, color: c.text, fontSize:12, flexShrink:0 }; })()}>
-                  {m.name?.slice(0,2)||"??"}
+                  {m.name?.slice(0,2) || "??"}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
                     <span style={{ fontSize:14, fontWeight:600, letterSpacing:"-.01em" }}>{m.name}</span>
-                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:"var(--r-pill)", background:rBg(m.role), color:rColor(m.role), border:`1px solid ${rBorder(m.role)}` }}>{roleLabel(m.role)}</span>
+                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:"var(--r-pill)", background:rBg(m.role), color:rColor(m.role), border:`1px solid ${rBorder(m.role)}` }}>
+                      {roleLabel(m.role)}
+                    </span>
                   </div>
                   <div style={{ fontSize:11, color:"var(--ink-3)" }}>{m.email}</div>
-                  {m.courseType && <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
+                  {m.courseType && (
+                    <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2 }}>
+                      {m.courseType}{m.joinDate ? " · " + m.joinDate : ""}
+                    </div>
+                  )}
+                </div>
+                {/* 操作按鈕 */}
+                <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                  <button className="btn btn-sm" style={{ padding:"5px 10px", fontSize:12 }}
+                    onClick={() => startEdit(m)}>編輯</button>
+                  <button className="btn btn-sm"
+                    style={{ padding:"5px 10px", fontSize:12, color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }}
+                    onClick={() => setConfirmDel(m.uid)}>刪除</button>
                 </div>
               </div>
             </div>
@@ -1275,41 +1691,73 @@ function CMembers({ onSwitch }) {
         <div className="content">
           {result && (
             <div style={{ padding:"11px 14px", borderRadius:"var(--r)", marginBottom:14, fontSize:13, textAlign:"center", lineHeight:1.5,
-              background:result.ok?"var(--sage-pale)":"rgba(224,97,78,.1)",
-              border:`1px solid ${result.ok?"rgba(15,184,154,.25)":"rgba(224,97,78,.25)"}`,
-              color:result.ok?"var(--sage)":"var(--rust)" }}>{result.msg}</div>
-          )}
-          <form onSubmit={handleAdd}>
-            <div className="input-label">角色</div>
-            <div className="chip-group" style={{ marginBottom:12 }}>
-              {["student","coach"].map(r=>(
-                <div key={r} className={"chip"+(form.role===r?" sel":"")} onClick={()=>setField("role",r)}>
-                  {r==="student"?"✦ 學員":"🎓 教練"}
-                </div>
-              ))}
+              background: result.ok ? "var(--sage-pale)" : "var(--rust-pale)",
+              border: `1px solid ${result.ok ? "rgba(74,123,90,.22)" : "rgba(139,58,42,.2)"}`,
+              color: result.ok ? "var(--sage)" : "var(--rust)" }}>
+              {result.msg}
             </div>
-            <div className="input-label">姓名 *</div>
-            <input className="input-field" placeholder="王小明" value={form.name} onChange={e=>setField("name",e.target.value)} />
-            <div className="input-label">Email *</div>
-            <input className="input-field" type="email" placeholder="member@email.com" value={form.email} onChange={e=>setField("email",e.target.value)} />
-            <div className="input-label">初始密碼 * （至少 6 碼）</div>
-            <input className="input-field" type="text" placeholder="設定後請告知對方" value={form.password} onChange={e=>setField("password",e.target.value)} />
-            {form.role==="student" && (
+          )}
+
+          {isEdit && (
+            <div style={{ padding:"8px 12px", background:"var(--slate-pale)", borderRadius:"var(--r)", marginBottom:14, fontSize:13, color:"var(--slate)", border:"1px solid rgba(58,74,107,.18)" }}>
+              ✏ 編輯模式：{editTarget.name} ({editTarget.email})
+            </div>
+          )}
+
+          <form onSubmit={isEdit ? handleEdit : handleAdd}>
+            {!isEdit && (
               <>
-                <div className="input-label">出生年月日</div>
-                <input className="input-field" type="date" value={form.birthdate} onChange={e=>setField("birthdate",e.target.value)} />
-                <div className="input-label">課程班別</div>
+                <div className="input-label">角色</div>
                 <div className="chip-group" style={{ marginBottom:12 }}>
-                  {COURSE_TYPES.map(c=><div key={c} className={"chip"+(form.courseType===c?" sel":"")} onClick={()=>setField("courseType",c)}>{c}</div>)}
+                  {["student","coach"].map(r => (
+                    <div key={r} className={"chip" + (form.role === r ? " sel" : "")} onClick={() => setField("role", r)}>
+                      {r === "student" ? "✦ 學員" : "🎓 教練"}
+                    </div>
+                  ))}
                 </div>
-                <div className="input-label">加入日期</div>
-                <input className="input-field" type="date" value={form.joinDate} onChange={e=>setField("joinDate",e.target.value)} />
-                <div className="input-label">主要聯絡教練（選填）</div>
-                <input className="input-field" placeholder="留空代表由所有教練共同協助" value={form.coachName} onChange={e=>setField("coachName",e.target.value)} />
               </>
             )}
-            <button type="submit" className="btn btn-primary" style={{ width:"100%", justifyContent:"center", marginTop:4 }} disabled={loading}>
-              {loading?"新增中…":`✦ 確認新增${form.role==="student"?"學員":"教練"}`}
+
+            <div className="input-label">姓名 *</div>
+            <input className="input-field" placeholder="王小明" value={form.name}
+              onChange={e => setField("name", e.target.value)} />
+
+            {!isEdit && (
+              <>
+                <div className="input-label">Email *</div>
+                <input className="input-field" type="email" placeholder="member@email.com" value={form.email}
+                  onChange={e => setField("email", e.target.value)} />
+                <div className="input-label">初始密碼 *（至少 6 碼）</div>
+                <input className="input-field" type="text" placeholder="設定後請告知對方" value={form.password}
+                  onChange={e => setField("password", e.target.value)} />
+              </>
+            )}
+
+            {(form.role === "student" || isEdit) && (
+              <>
+                <div className="input-label">出生年月日</div>
+                <input className="input-field" type="date" value={form.birthdate}
+                  onChange={e => setField("birthdate", e.target.value)} />
+                <div className="input-label">課程班別</div>
+                <div className="chip-group" style={{ marginBottom:12 }}>
+                  {COURSE_TYPES.map(c => (
+                    <div key={c} className={"chip" + (form.courseType === c ? " sel" : "")}
+                      onClick={() => setField("courseType", c)}>{c}</div>
+                  ))}
+                </div>
+                <div className="input-label">加入日期</div>
+                <input className="input-field" type="date" value={form.joinDate}
+                  onChange={e => setField("joinDate", e.target.value)} />
+                <div className="input-label">主要聯絡教練（選填）</div>
+                <input className="input-field" placeholder="留空代表由所有教練共同協助" value={form.coachName}
+                  onChange={e => setField("coachName", e.target.value)} />
+              </>
+            )}
+
+            <button type="submit" className="btn btn-primary"
+              style={{ width:"100%", justifyContent:"center", marginTop:4 }}
+              disabled={loading}>
+              {loading ? "處理中…" : isEdit ? "✦ 儲存變更" : `✦ 確認新增${form.role === "student" ? "學員" : "教練"}`}
             </button>
           </form>
         </div>
@@ -1373,7 +1821,13 @@ export default function App() {
   const { user, profile, role, loading, logout } = useAuth();
   const [sTab,  setSTab]  = useState("home");
   const [cTab,  setCTab]  = useState("home");
-  const [modal, setModal] = useState(null);
+  const [modal, setModal] = useState(null); // null | { type, onSuccess }
+
+  const openModal = (type, onSuccess) => setModal({ type, onSuccess: onSuccess || null });
+  const closeModal = (didSave) => {
+    if (didSave && modal?.onSuccess) modal.onSuccess();
+    setModal(null);
+  };
 
   useEffect(() => {
     const el = document.createElement("style");
@@ -1394,9 +1848,9 @@ export default function App() {
   const renderCoach = () => {
     switch(cTab) {
       case "home":    return <CHome    onSwitch={setCTab} />;
-      case "modules": return <CModules onSwitch={setCTab} onModal={setModal} />;
+      case "modules": return <CModules onSwitch={setCTab} onModal={openModal} />;
       case "assign":  return <CAssign  onSwitch={setCTab} />;
-      case "records": return <CRecords onSwitch={setCTab} onModal={setModal} />;
+      case "records": return <CRecords onSwitch={setCTab} onModal={openModal} />;
       case "members": return <CMembers onSwitch={setCTab} />;
       default:        return <CHome    onSwitch={setCTab} />;
     }
@@ -1470,8 +1924,8 @@ export default function App() {
 
         {role==="student" ? renderStudent() : renderCoach()}
 
-        {modal==="module" && <ModalAddModule onClose={()=>setModal(null)} />}
-        {modal==="record" && <ModalAddRecord onClose={()=>setModal(null)} />}
+        {modal?.type === "module" && <ModalAddModule onClose={closeModal} />}
+        {modal?.type === "record" && <ModalAddRecord onClose={closeModal} />}
       </div>
     </>
   );
