@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import Rimport React, { createContext, useContext, useState, useEffect } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -142,7 +142,7 @@ export function AuthProvider({ children }) {
         ...data,
         coachId:   auth.currentUser?.uid || "",
         coachName: profile?.name || "",
-        status:    "pending",   // 教練新增後直接送審
+        status:    "published", // 教練新增後直接發布
         createdAt: serverTimestamp(),
       });
       return { success: true, id: ref.id };
@@ -176,7 +176,7 @@ export function AuthProvider({ children }) {
   const updateModule = async (moduleId, data) => {
     try {
       await updateDoc(doc(db, "modules", moduleId), {
-        ...data, status: "pending",   // 重新送審
+        ...data,
         updatedAt: serverTimestamp(),
       });
       return { success: true };
