@@ -107,6 +107,7 @@ body {
 }
 .role-badge.coach  { background: var(--sage-pale);  color: var(--sage);  border: 1px solid rgba(74,123,90,.2); }
 .role-badge.student{ background: var(--slate-pale); color: var(--slate); border: 1px solid rgba(58,74,107,.2); }
+.role-badge.admin  { background: var(--gold-pale);  color: var(--gold);  border: 1px solid var(--gold-line); }
 .logout-btn {
   padding: 5px 12px;
   border-radius: var(--r-pill);
@@ -822,47 +823,43 @@ function GrowthItem({ s }) {
 /* ════════════════════════════════════════
    MODALS
 ════════════════════════════════════════ */
-function ModalAddModule({ onClose }) {
-  const { addModule } = useAuth();
+function ModalAddModule({ onClose, editData }) {
+  const { addModule, updateModule } = useAuth();
+  const isEdit = !!editData;
   const [form, setForm] = useState({
-    title: "", outline: "", duration: "",
-    method: ["線上"], stage: ["定位"],
+    title:    editData?.title    || "",
+    outline:  editData?.outline  || "",
+    duration: editData?.duration || "",
+    method:   editData?.method   || ["線上"],
+    stage:    editData?.stage    || ["定位"],
   });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  const toggleOption = (key, val) =>
-    setForm(f => {
-      const arr = f[key];
-      return { ...f, [key]: arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val] };
-    });
+  const toggleOption = (key, val) => setForm(f => {
+    const arr = f[key];
+    return { ...f, [key]: arr.includes(val) ? arr.filter(x=>x!==val) : [...arr,val] };
+  });
 
   const handleSave = async () => {
     if (!form.title.trim()) { setError("請填寫課程主題"); return; }
     setLoading(true); setError("");
-    const res = await addModule({
-      title:    form.title.trim(),
-      outline:  form.outline.trim(),
-      duration: form.duration.trim(),
-      method:   form.method,
-      stage:    form.stage,
-    });
+    const payload = { title:form.title.trim(), outline:form.outline.trim(), duration:form.duration.trim(), method:form.method, stage:form.stage };
+    const res = isEdit ? await updateModule(editData.id, payload) : await addModule(payload);
     setLoading(false);
-    if (res.success) {
-      onClose(true); // true = 新增成功，通知父層重新載入
-    } else {
-      setError("儲存失敗，請再試一次。");
-    }
+    if (res.success) onClose(true);
+    else setError("儲存失敗，請再試一次。");
   };
 
   return (
     <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) onClose(false); }}>
       <div className="modal-sheet">
         <div className="modal-handle" />
-        <div className="modal-title">新增課程模組</div>
-
+        <div className="modal-title">{isEdit ? "編輯課程模組" : "新增課程模組"}</div>
+        {isEdit && (
+          <div style={{ padding:"7px 12px", background:"#FEF3D0", border:"1px solid rgba(138,104,32,.2)", borderRadius:"var(--r)", marginBottom:14, fontSize:13, color:"#8A6820" }}>✎ 儲存後將重新送審管理員審核</div>
+        )}
         {error && (
           <div style={{ background:"var(--rust-pale)", border:"1px solid rgba(139,58,42,.2)", borderRadius:"var(--r)", padding:"10px 14px", fontSize:13, color:"var(--rust)", marginBottom:14 }}>
             {error}
@@ -907,7 +904,7 @@ function ModalAddModule({ onClose }) {
         <div className="btn-row">
           <button className="btn" onClick={() => onClose(false)}>取消</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
-            {loading ? "儲存中…" : "✦ 儲存模組"}
+            {loading ? "儲存中…" : isEdit ? "✦ 送出重審" : "✦ 送審"}
           </button>
         </div>
       </div>
@@ -1228,13 +1225,6 @@ function SFeedback({ onSwitch }) {
 /* ════════════════════════════════════════
    COACH SCREENS
 ════════════════════════════════════════ */
-const C_TABS = [
-  { key:"home",    label:"總覽", Icon:IcHome  },
-  { key:"modules", label:"模組", Icon:IcLayer },
-  { key:"assign",  label:"分配", Icon:IcSwap  },
-  { key:"records", label:"記錄", Icon:IcDoc   },
-  { key:"members", label:"成員", Icon:IcUsers },
-];
 
 function CHome({ onSwitch }) {
   const { profile, fetchMembers } = useAuth();
@@ -1291,35 +1281,58 @@ function CHome({ onSwitch }) {
   );
 }
 
-function ModuleCard({ m, stageColors }) {
+/* ── 模組狀態標籤 ── */
+const MODULE_STATUS = {
+  draft:     { label:"草稿",   bg:"var(--cream-2)",   color:"var(--ink-3)",  border:"var(--cream-3)" },
+  pending:   { label:"待審核", bg:"#FEF3D0",           color:"#8A6820",       border:"rgba(138,104,32,.2)" },
+  published: { label:"已發布", bg:"var(--sage-pale)",  color:"var(--sage)",   border:"rgba(74,123,90,.22)" },
+  rejected:  { label:"已退回", bg:"var(--rust-pale)",  color:"var(--rust)",   border:"rgba(139,58,42,.2)" },
+};
+
+function ModuleCard({ m, stageColors, canEdit, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
+  const st = MODULE_STATUS[m.status] || MODULE_STATUS.pending;
   return (
-    <div key={m.id} className="mod-card" style={{ borderLeftColor: stageColors[m.stage?.[0]] || "var(--gold)", marginBottom:10 }}>
+    <div className="mod-card" style={{ borderLeftColor: stageColors[m.stage?.[0]] || "var(--gold)", marginBottom:10 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", cursor:"pointer" }}
         onClick={() => setOpen(o => !o)}>
         <div style={{ flex:1 }}>
-          <div className="mod-tags">
+          <div className="mod-tags" style={{ marginBottom:6 }}>
+            {/* 狀態 badge */}
+            <span className="badge" style={{ background:st.bg, color:st.color, border:`1px solid ${st.border}`, fontSize:10 }}>
+              {st.label}
+            </span>
             {(m.stage||[]).map(s => (
               <span key={s} className="badge" style={{ background:"var(--gold-pale)", color:"var(--gold)", border:"1px solid var(--gold-line)", fontSize:10 }}>{s}</span>
             ))}
-            {m.duration && (
-              <span className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>
-            )}
+            {m.duration && <span className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>}
             {(m.method||[]).map(mt => (
               <span key={mt} className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>{mt}</span>
             ))}
           </div>
           <div className="mod-title">{m.title}</div>
           {m.outline && <div className="mod-outline">{m.outline}</div>}
-          {m.coachName && (
-            <div style={{ fontSize:11, color:"var(--ink-4)", marginTop:6, fontStyle:"italic" }}>建立者：{m.coachName}</div>
+          {m.reviewNote && m.status === "rejected" && (
+            <div style={{ fontSize:12, color:"var(--rust)", marginTop:6, fontStyle:"italic", background:"var(--rust-pale)", padding:"6px 10px", borderRadius:"var(--r)" }}>
+              退回原因：{m.reviewNote}
+            </div>
           )}
+          {m.coachName && <div style={{ fontSize:11, color:"var(--ink-4)", marginTop:6, fontStyle:"italic" }}>建立者：{m.coachName}</div>}
         </div>
-        <div style={{ fontSize:16, color:"var(--ink-4)", marginLeft:10, marginTop:4, flexShrink:0 }}>
-          {open ? "▲" : "▼"}
+        <div style={{ display:"flex", alignItems:"center", gap:6, marginLeft:10, flexShrink:0 }}>
+          {/* 只有 pending/rejected 狀態可以編輯刪除 */}
+          {canEdit && (m.status !== "published") && (
+            <>
+              <button className="btn btn-sm" style={{ padding:"4px 9px", fontSize:11 }}
+                onClick={e => { e.stopPropagation(); onEdit(m); }}>編輯</button>
+              <button className="btn btn-sm"
+                style={{ padding:"4px 9px", fontSize:11, color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }}
+                onClick={e => { e.stopPropagation(); onDelete(m.id); }}>刪除</button>
+            </>
+          )}
+          <span style={{ fontSize:14, color:"var(--ink-4)" }}>{open ? "▲" : "▼"}</span>
         </div>
       </div>
-      {/* 展開：課程學習資料 */}
       {open && (
         <div style={{ borderTop:"1px solid var(--cream-3)", marginTop:12, paddingTop:4 }}>
           <ResourcePanel moduleId={m.id} />
@@ -1330,18 +1343,28 @@ function ModuleCard({ m, stageColors }) {
 }
 
 function CModules({ onSwitch, onModal }) {
-  const { fetchModules } = useAuth();
+  const { fetchModules, deleteModule } = useAuth();
   const [modules,    setModules]    = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [editTarget, setEditTarget] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
 
   useEffect(() => {
     setLoading(true);
-    fetchModules().then(all => {
-      setModules(all);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    fetchModules().then(all => { setModules(all); setLoading(false); }).catch(() => setLoading(false));
   }, [refreshKey]);
+
+  const handleModal = () => onModal("module", () => setRefreshKey(k => k+1));
+  const handleEdit  = (m) => {
+    setEditTarget(m);
+    onModal("module_edit", () => setRefreshKey(k => k+1));
+  };
+  const handleDelete = async (id) => {
+    await deleteModule(id);
+    setConfirmDel(null);
+    setRefreshKey(k => k+1);
+  };
 
   const stageColors = {
     "探索":"var(--gold)","自我認知":"var(--slate)","內化":"var(--slate)",
@@ -1349,47 +1372,96 @@ function CModules({ onSwitch, onModal }) {
     "實作":"var(--rust)","市場":"var(--rust)","共創":"var(--gold)",
   };
 
-  const handleModal = () => onModal("module", () => setRefreshKey(k => k + 1));
-
   return (
     <div className="screen-enter">
+      {confirmDel && (
+        <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.5)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
+          <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:320 }}>
+            <div style={{ fontFamily:"var(--font)",fontSize:18,fontWeight:600,marginBottom:10 }}>確認刪除模組</div>
+            <div style={{ fontSize:14,color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除此課程模組嗎？此動作無法復原。</div>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
+              <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }} onClick={() => handleDelete(confirmDel)}>確認刪除</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="topbar">
         <div className="topbar-title">課程模組</div>
         <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增</button>
       </div>
       <div className="content">
         {loading ? (
-          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48 }}>載入中…</div>
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48 }}>載入中…</div>
         ) : modules.length === 0 ? (
           <>
-            <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, marginBottom:18, lineHeight:1.7 }}>
-              尚未建立課程模組<br /><span style={{ fontSize:12, fontStyle:"italic" }}>點右上角「新增」開始建立</span>
+            <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,marginBottom:18,lineHeight:1.7 }}>
+              尚未建立課程模組<br/><span style={{ fontSize:12,fontStyle:"italic" }}>點右上角「新增」開始建立</span>
             </div>
-            <button className="btn" style={{ width:"100%", justifyContent:"center" }} onClick={handleModal}>
-              <IcPlus />新增第一個課程模組
-            </button>
+            <button className="btn" style={{ width:"100%",justifyContent:"center" }} onClick={handleModal}><IcPlus />新增第一個課程模組</button>
           </>
-        ) : (
-          modules.map(m => <ModuleCard key={m.id} m={m} stageColors={stageColors} />)
-        )}
+        ) : modules.map(m => (
+          <ModuleCard key={m.id} m={m} stageColors={stageColors}
+            canEdit={true}
+            onEdit={handleEdit}
+            onDelete={id => setConfirmDel(id)} />
+        ))}
       </div>
+      {/* 編輯 Modal */}
+      {editTarget && (
+        <ModalAddModule
+          editData={editTarget}
+          onClose={(saved) => { setEditTarget(null); if(saved) setRefreshKey(k=>k+1); }} />
+      )}
       <BottomNav tabs={C_TABS} active="modules" onSwitch={onSwitch} />
     </div>
   );
 }
 
 function CAssign({ onSwitch }) {
-  const { profile, fetchMembers, fetchModules } = useAuth();
+  const { profile, fetchMembers, fetchModules, fetchAssignment, saveAssignment } = useAuth();
   const [students,   setStudents]   = useState([]);
   const [modulePool, setModulePool] = useState([]);
   const [selStudent, setSelStudent] = useState(null);
   const [assigned,   setAssigned]   = useState([]);
+  const [saving,     setSaving]     = useState(false);
+  const [saved,      setSaved]      = useState(false);
 
   useEffect(() => {
     if (!profile?.uid) return;
-    fetchMembers().then(all => setStudents(all.filter(m=>m.role==="student"))).catch(()=>{});
-    fetchModules().then(all => setModulePool(all)).catch(()=>{});
+    fetchMembers().then(all => setStudents(all.filter(m => m.role === "student"))).catch(() => {});
+    // 只顯示已發布的模組
+    fetchModules("published").then(setModulePool).catch(() => {});
   }, [profile?.uid]);
+
+  // 選擇學員後載入已分配的模組
+  const selectStudent = async (s) => {
+    setSelStudent(s);
+    setSaved(false);
+    const ids = await fetchAssignment(s.uid);
+    // 用 id 找回完整模組資料
+    const current = modulePool.filter(m => ids.includes(m.id));
+    setAssigned(current);
+  };
+
+  const addModule = (m) => {
+    setAssigned(a => a.find(x => x.id === m.id) ? a : [...a, m]);
+    setSaved(false);
+  };
+
+  const removeModule = (id) => {
+    setAssigned(a => a.filter(m => m.id !== id));
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    if (!selStudent) return;
+    setSaving(true);
+    const res = await saveAssignment(selStudent.uid, assigned.map(m => m.id));
+    setSaving(false);
+    if (res.success) setSaved(true);
+  };
+
   return (
     <div className="screen-enter">
       <div className="topbar">
@@ -1397,47 +1469,54 @@ function CAssign({ onSwitch }) {
         {selStudent && <span className="badge badge-nebula">{selStudent.name}</span>}
       </div>
       <div className="content">
-        {students.length===0 ? (
-          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, lineHeight:1.7 }}>
-            尚無學員<br /><span style={{ fontSize:12 }}>請先在「成員管理」新增學員</span>
+        {students.length === 0 ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>
+            尚無學員<br/><span style={{ fontSize:12 }}>請先在「成員管理」新增學員</span>
           </div>
         ) : (
           <>
             <div className="sec-h">選擇學員</div>
             <div className="chip-group">
-              {students.map(s=>(
+              {students.map(s => (
                 <div key={s.uid} className={"chip"+(selStudent?.uid===s.uid?" sel":"")}
-                  onClick={()=>{setSelStudent(s);setAssigned([]);}}>{s.name}</div>
+                  onClick={() => selectStudent(s)}>{s.name}</div>
               ))}
             </div>
             {selStudent && (
               <>
-                <div style={{ fontSize:13, color:"var(--ink-3)", marginBottom:12, lineHeight:1.6 }}>
-                  為 <strong style={{ color:"var(--ink)" }}>{selStudent.name}</strong> 加入課程模組
+                <div style={{ fontSize:13,color:"var(--ink-3)",marginBottom:12,lineHeight:1.6 }}>
+                  為 <strong style={{ color:"var(--ink)" }}>{selStudent.name}</strong> 分配已發布的課程模組
                 </div>
-                <div className="sec-h">可用模組庫</div>
+                <div className="sec-h">可用模組（已發布）</div>
                 <div className="module-pool">
                   {modulePool.length === 0
-                    ? <span style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic" }}>尚未建立課程模組，請先至「模組」頁面新增</span>
+                    ? <span style={{ fontSize:12,color:"var(--ink-3)",fontStyle:"italic" }}>尚無已發布的課程模組</span>
                     : modulePool.map(m => (
-                        <span key={m.id} className="m-chip"
-                          onClick={() => setAssigned(a => a.find(x=>x.id===m.id) ? a : [...a, m])}>
-                          ✦ {m.title}
-                        </span>
+                        <span key={m.id} className="m-chip" onClick={() => addModule(m)}>✦ {m.title}</span>
                       ))
                   }
                 </div>
                 <div className="sec-h">{selStudent.name} 的專屬課程</div>
                 <div className="drop-zone">
-                  <div className="drop-label">↑ 點擊上方模組加入</div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                  <div className="drop-label">↑ 點擊上方模組加入 · 點 × 移除</div>
+                  <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
                     {assigned.map(a => (
-                      <span key={a.id} className="m-chip assigned">✓ {a.title}</span>
+                      <span key={a.id} className="m-chip assigned" style={{ cursor:"pointer" }}
+                        onClick={() => removeModule(a.id)}>
+                        ✓ {a.title} ×
+                      </span>
                     ))}
                   </div>
                 </div>
+                {saved && (
+                  <div style={{ padding:"10px 14px",borderRadius:"var(--r)",marginTop:10,fontSize:13,textAlign:"center",background:"var(--sage-pale)",border:"1px solid rgba(74,123,90,.22)",color:"var(--sage)" }}>
+                    ✓ 課程安排已儲存
+                  </div>
+                )}
                 <div className="btn-row" style={{ marginTop:12 }}>
-                  <button className="btn btn-primary">儲存課程安排</button>
+                  <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+                    {saving ? "儲存中…" : "✦ 儲存課程安排"}
+                  </button>
                 </div>
               </>
             )}
@@ -1815,15 +1894,343 @@ function NoAccessScreen({ user, logout }) {
 }
 
 /* ════════════════════════════════════════
+   COACH TABS（無成員管理，移至管理員）
+════════════════════════════════════════ */
+const C_TABS = [
+  { key:"home",    label:"總覽", Icon:IcHome  },
+  { key:"modules", label:"模組", Icon:IcLayer },
+  { key:"assign",  label:"分配", Icon:IcSwap  },
+  { key:"records", label:"記錄", Icon:IcDoc   },
+];
+
+/* ════════════════════════════════════════
+   ADMIN SCREENS
+════════════════════════════════════════ */
+const A_TABS = [
+  { key:"home",    label:"總覽", Icon:IcHome  },
+  { key:"members", label:"成員", Icon:IcUsers },
+  { key:"review",  label:"課程審核", Icon:IcLayer },
+  { key:"records", label:"所有記錄", Icon:IcDoc  },
+];
+
+function AHome({ onSwitch }) {
+  const { profile, fetchMembers, fetchModules } = useAuth();
+  const [counts, setCounts] = useState({ members:0, pending:0, records:0 });
+  useEffect(() => {
+    Promise.all([
+      fetchMembers(),
+      fetchModules("pending"),
+    ]).then(([members, pending]) => {
+      setCounts({ members: members.length, pending: pending.length });
+    }).catch(() => {});
+  }, []);
+  return (
+    <div className="screen-enter">
+      <div className="topbar">
+        <div>
+          <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR · 管理員</div>
+          <div style={{ fontSize:11,color:"var(--ink-3)",marginTop:2,letterSpacing:".04em" }}>Admin Dashboard</div>
+        </div>
+        <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||"管"); return { background:c.bg,color:c.text,borderColor:c.bg }; })()}>
+          {(profile?.name||"管").slice(0,1)}
+        </div>
+      </div>
+      <div className="content">
+        <div className="card-gold" style={{ marginBottom:14 }}>
+          <div style={{ fontFamily:"var(--font)",fontSize:20,fontWeight:600 }}>{profile?.name||"管理員"}</div>
+          <div style={{ fontSize:13,color:"var(--ink-3)",marginTop:4,fontStyle:"italic" }}>iSTAR Alliance 系統管理員</div>
+        </div>
+        <div className="stats-grid">
+          <div className="stat-tile"><div className="stat-num gold">{counts.members}</div><div className="stat-lbl">系統成員</div></div>
+          <div className="stat-tile">
+            <div className="stat-num" style={{ color: counts.pending > 0 ? "var(--rust)" : "var(--ink)" }}>{counts.pending}</div>
+            <div className="stat-lbl">待審課程</div>
+          </div>
+        </div>
+        {counts.pending > 0 && (
+          <div style={{ padding:"12px 16px",background:"#FEF3D0",border:"1px solid rgba(138,104,32,.2)",borderRadius:"var(--r-lg)",marginBottom:10,cursor:"pointer" }}
+            onClick={() => onSwitch("review")}>
+            <div style={{ fontSize:14,fontWeight:600,color:"#8A6820" }}>⏳ 有 {counts.pending} 個課程模組待審核</div>
+            <div style={{ fontSize:12,color:"#A07830",marginTop:3,fontStyle:"italic" }}>點此前往審核</div>
+          </div>
+        )}
+        <div className="sec-h">快速操作</div>
+        <div className="qa-grid">
+          <button className="qa-card" onClick={() => onSwitch("members")}><span className="qa-icon">👥</span><div className="qa-label">成員管理</div><div className="qa-sub">新增 / 編輯 / 刪除</div></button>
+          <button className="qa-card" onClick={() => onSwitch("review")}><span className="qa-icon">✦</span><div className="qa-label">課程審核</div><div className="qa-sub">待審 {counts.pending} 件</div></button>
+          <button className="qa-card" onClick={() => onSwitch("records")}><span className="qa-icon">📝</span><div className="qa-label">所有記錄</div><div className="qa-sub">查看上課紀錄</div></button>
+        </div>
+      </div>
+      <BottomNav tabs={A_TABS} active="home" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+function AMembers({ onSwitch }) {
+  // 與 CMembers 相同邏輯，管理員版
+  const { addMember, fetchMembers, updateMember, deleteMember, profile } = useAuth();
+  const [members,    setMembers]    = useState([]);
+  const [tab,        setTab]        = useState("list");
+  const [loading,    setLoading]    = useState(false);
+  const [result,     setResult]     = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const blankForm = { name:"",email:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:new Date().toISOString().slice(0,10),role:"student" };
+  const [form, setForm] = useState(blankForm);
+
+  const loadMembers = () => fetchMembers().then(setMembers).catch(() => {});
+  useEffect(() => { if(tab==="list") loadMembers(); }, [tab]);
+
+  const setField = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const handleAdd = async e => {
+    e.preventDefault();
+    if (!form.name||!form.email||!form.password) { setResult({ok:false,msg:"姓名、Email、密碼為必填。"}); return; }
+    setLoading(true); setResult(null);
+    const res = await addMember({...form});
+    setLoading(false);
+    if (res.success) { setResult({ok:true,msg:`${form.name} 已成功新增！`}); setForm({...blankForm,role:form.role}); }
+    else setResult({ok:false,msg:res.error});
+  };
+
+  const startEdit = m => { setEditTarget(m); setForm({name:m.name||"",email:m.email||"",password:"",birthdate:m.birthdate||"",coachName:m.coachName||"",courseType:m.courseType||"個人賦能班",joinDate:m.joinDate||"",role:m.role||"student"}); setTab("add"); setResult(null); };
+
+  const handleEdit = async e => {
+    e.preventDefault();
+    if (!form.name) { setResult({ok:false,msg:"姓名為必填。"}); return; }
+    setLoading(true); setResult(null);
+    const res = await updateMember(editTarget.uid, {name:form.name,birthdate:form.birthdate,coachName:form.coachName,courseType:form.courseType,joinDate:form.joinDate});
+    setLoading(false);
+    if (res.success) { setResult({ok:true,msg:`${form.name} 資料已更新！`}); setEditTarget(null); loadMembers(); }
+    else setResult({ok:false,msg:"更新失敗。"});
+  };
+
+  const handleDelete = async uid => { await deleteMember(uid); setConfirmDel(null); setMembers(ms=>ms.filter(m=>m.uid!==uid)); };
+
+  const roleColors = { admin:{bg:"var(--gold-pale)",color:"var(--gold)",border:"var(--gold-line)"}, coach:{bg:"var(--sage-pale)",color:"var(--sage)",border:"rgba(74,123,90,.22)"}, student:{bg:"var(--slate-pale)",color:"var(--slate)",border:"rgba(58,74,107,.18)"} };
+  const rc = r => roleColors[r] || roleColors.student;
+
+  return (
+    <div className="screen-enter">
+      {confirmDel && (
+        <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.5)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
+          <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:320 }}>
+            <div style={{ fontFamily:"var(--font)",fontSize:18,fontWeight:600,marginBottom:10 }}>確認刪除成員</div>
+            <div style={{ fontSize:14,color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除 <strong>{members.find(m=>m.uid===confirmDel)?.name}</strong> 嗎？</div>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
+              <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }} onClick={() => handleDelete(confirmDel)}>確認刪除</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="topbar">
+        <div className="topbar-title">成員管理</div>
+        <button className={tab==="add"?"btn btn-primary btn-sm":"btn btn-sm"} onClick={() => { if(tab==="add"){setTab("list");setEditTarget(null);setResult(null);}else{setForm(blankForm);setEditTarget(null);setTab("add");setResult(null);} }}>
+          {tab==="add" ? "← 返回" : "+ 新增成員"}
+        </button>
+      </div>
+      {tab==="list" ? (
+        <div className="content">
+          <div className="sec-h">所有成員（{members.length} 人）</div>
+          {members.length===0 && <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:36,lineHeight:1.7 }}>還沒有成員<br/><span style={{ fontSize:12 }}>點右上角「+ 新增成員」</span></div>}
+          {members.map(m => {
+            const c = rc(m.role);
+            return (
+              <div key={m.uid} className="card card-sm" style={{ marginBottom:8 }}>
+                <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+                  <div className="coach-av" style={(() => { const ac=getAvatarColor(m.name||""); return {background:ac.bg,color:ac.text,fontSize:12,flexShrink:0}; })()}>{m.name?.slice(0,2)||"??"}</div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:2 }}>
+                      <span style={{ fontSize:14,fontWeight:600,letterSpacing:"-.01em" }}>{m.name}</span>
+                      <span style={{ fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:"var(--r-pill)",background:c.bg,color:c.color,border:`1px solid ${c.border}` }}>{m.role==="admin"?"管理員":m.role==="coach"?"教練":"學員"}</span>
+                    </div>
+                    <div style={{ fontSize:11,color:"var(--ink-3)" }}>{m.email}</div>
+                    {m.courseType && <div style={{ fontSize:11,color:"var(--ink-3)",marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
+                  </div>
+                  <div style={{ display:"flex",gap:6,flexShrink:0 }}>
+                    <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:12 }} onClick={() => startEdit(m)}>編輯</button>
+                    <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:12,color:"var(--rust)",borderColor:"rgba(139,58,42,.2)",background:"var(--rust-pale)" }} onClick={() => setConfirmDel(m.uid)}>刪除</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="content">
+          {result && <div style={{ padding:"11px 14px",borderRadius:"var(--r)",marginBottom:14,fontSize:13,textAlign:"center",lineHeight:1.5,background:result.ok?"var(--sage-pale)":"var(--rust-pale)",border:`1px solid ${result.ok?"rgba(74,123,90,.22)":"rgba(139,58,42,.2)"}`,color:result.ok?"var(--sage)":"var(--rust)" }}>{result.msg}</div>}
+          {editTarget && <div style={{ padding:"7px 12px",background:"var(--slate-pale)",borderRadius:"var(--r)",marginBottom:14,fontSize:13,color:"var(--slate)",border:"1px solid rgba(58,74,107,.18)" }}>✏ 編輯：{editTarget.name}</div>}
+          <form onSubmit={editTarget ? handleEdit : handleAdd}>
+            {!editTarget && (
+              <>
+                <div className="input-label">角色</div>
+                <div className="chip-group" style={{ marginBottom:12 }}>
+                  {[["student","✦ 學員"],["coach","🎓 教練"],["admin","⚙ 管理員"]].map(([r,l]) => (
+                    <div key={r} className={"chip"+(form.role===r?" sel":"")} onClick={() => setField("role",r)}>{l}</div>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="input-label">姓名 *</div>
+            <input className="input-field" placeholder="王小明" value={form.name} onChange={e=>setField("name",e.target.value)} />
+            {!editTarget && (
+              <>
+                <div className="input-label">Email *</div>
+                <input className="input-field" type="email" placeholder="member@email.com" value={form.email} onChange={e=>setField("email",e.target.value)} />
+                <div className="input-label">初始密碼 *（至少 6 碼）</div>
+                <input className="input-field" type="text" placeholder="設定後請告知對方" value={form.password} onChange={e=>setField("password",e.target.value)} />
+              </>
+            )}
+            {(form.role==="student"||editTarget?.role==="student") && (
+              <>
+                <div className="input-label">出生年月日</div>
+                <input className="input-field" type="date" value={form.birthdate} onChange={e=>setField("birthdate",e.target.value)} />
+                <div className="input-label">課程班別</div>
+                <div className="chip-group" style={{ marginBottom:12 }}>
+                  {COURSE_TYPES.map(c=><div key={c} className={"chip"+(form.courseType===c?" sel":"")} onClick={()=>setField("courseType",c)}>{c}</div>)}
+                </div>
+                <div className="input-label">加入日期</div>
+                <input className="input-field" type="date" value={form.joinDate} onChange={e=>setField("joinDate",e.target.value)} />
+                <div className="input-label">主要聯絡教練（選填）</div>
+                <input className="input-field" placeholder="留空代表由所有教練共同協助" value={form.coachName} onChange={e=>setField("coachName",e.target.value)} />
+              </>
+            )}
+            <button type="submit" className="btn btn-primary" style={{ width:"100%",justifyContent:"center",marginTop:4 }} disabled={loading}>
+              {loading ? "處理中…" : editTarget ? "✦ 儲存變更" : `✦ 確認新增${form.role==="student"?"學員":form.role==="coach"?"教練":"管理員"}`}
+            </button>
+          </form>
+        </div>
+      )}
+      <BottomNav tabs={A_TABS} active="members" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+function AReview({ onSwitch }) {
+  const { fetchModules, reviewModule } = useAuth();
+  const [pending,    setPending]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [noteTarget, setNoteTarget] = useState(null);
+  const [note,       setNote]       = useState("");
+
+  const load = () => {
+    setLoading(true);
+    fetchModules("pending").then(all => { setPending(all); setLoading(false); }).catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const approve = async (id) => {
+    await reviewModule(id, "approve");
+    setPending(p => p.filter(m => m.id !== id));
+  };
+
+  const reject = async (id) => {
+    await reviewModule(id, "reject", note);
+    setNoteTarget(null); setNote("");
+    setPending(p => p.filter(m => m.id !== id));
+  };
+
+  return (
+    <div className="screen-enter">
+      {noteTarget && (
+        <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.5)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
+          <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:340 }}>
+            <div style={{ fontFamily:"var(--font)",fontSize:18,fontWeight:600,marginBottom:14 }}>退回原因</div>
+            <textarea className="input-field" rows={3} placeholder="請填寫退回原因，教練將會看到此訊息…" value={note} onChange={e => setNote(e.target.value)} />
+            <div className="btn-row" style={{ marginTop:4 }}>
+              <button className="btn" onClick={() => { setNoteTarget(null); setNote(""); }}>取消</button>
+              <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }} onClick={() => reject(noteTarget)}>確認退回</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="topbar"><div className="topbar-title">課程審核</div></div>
+      <div className="content">
+        {loading ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48 }}>載入中…</div>
+        ) : pending.length === 0 ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>
+            目前沒有待審課程 ✓<br/><span style={{ fontSize:12,fontStyle:"italic" }}>所有課程模組均已審核完畢</span>
+          </div>
+        ) : pending.map(m => (
+          <div key={m.id} className="card" style={{ marginBottom:10 }}>
+            <div style={{ marginBottom:8 }}>
+              <div className="mod-tags" style={{ marginBottom:6 }}>
+                {(m.stage||[]).map(s=><span key={s} className="badge badge-gold" style={{ fontSize:10 }}>{s}</span>)}
+                {m.duration && <span className="badge" style={{ background:"var(--cream-2)",color:"var(--ink-3)",border:"1px solid var(--cream-3)",fontSize:10 }}>⏱ {m.duration}</span>}
+                {(m.method||[]).map(mt=><span key={mt} className="badge" style={{ background:"var(--cream-2)",color:"var(--ink-3)",border:"1px solid var(--cream-3)",fontSize:10 }}>{mt}</span>)}
+              </div>
+              <div style={{ fontFamily:"var(--font)",fontSize:16,fontWeight:600 }}>{m.title}</div>
+              {m.outline && <div style={{ fontSize:13,color:"var(--ink-3)",marginTop:4,fontStyle:"italic",lineHeight:1.6 }}>{m.outline}</div>}
+              <div style={{ fontSize:12,color:"var(--ink-4)",marginTop:6,fontStyle:"italic" }}>建立者：{m.coachName} · {m.createdAt?.toDate?.()?.toLocaleDateString("zh-TW")||"—"}</div>
+            </div>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" style={{ color:"var(--rust)",borderColor:"rgba(139,58,42,.2)",background:"var(--rust-pale)" }}
+                onClick={() => setNoteTarget(m.id)}>退回</button>
+              <button className="btn btn-primary" onClick={() => approve(m.id)}>✦ 核准發布</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <BottomNav tabs={A_TABS} active="review" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+function ARecords({ onSwitch }) {
+  const { fetchRecords } = useAuth();
+  const [records,  setRecords]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  useEffect(() => {
+    fetchRecords().then(all => {
+      setRecords(all.sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+  return (
+    <div className="screen-enter">
+      <div className="topbar"><div className="topbar-title">所有記錄</div></div>
+      <div className="content">
+        {loading ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48 }}>載入中…</div>
+        ) : records.length === 0 ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>尚無上課記錄</div>
+        ) : records.map(r => (
+          <div key={r.id} className="card" style={{ marginBottom:10 }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8 }}>
+              <div>
+                <div style={{ fontSize:15,fontWeight:600,fontFamily:"var(--font)" }}>{r.topic}</div>
+                <div style={{ fontSize:12,color:"var(--ink-3)",marginTop:2,fontStyle:"italic" }}>
+                  {r.date} · 學員：{r.studentName||"—"} · 教練：{r.coachName||"—"}
+                </div>
+              </div>
+              <div style={{ display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0,marginLeft:8 }}>
+                {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:10 }}>學員可見</span>}
+              </div>
+            </div>
+            {r.feedback && <div className="record-note"><div className="record-note-label" style={{ color:"var(--sage)" }}>給學員的回饋</div>{r.feedback}</div>}
+            {r.privateNote && <div className="record-note coach-only" style={{ marginTop:6 }}><div className="record-note-label" style={{ color:"var(--gold)" }}>教練私密備註</div>{r.privateNote}</div>}
+          </div>
+        ))}
+      </div>
+      <BottomNav tabs={A_TABS} active="records" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════
    ROOT APP
 ════════════════════════════════════════ */
 export default function App() {
   const { user, profile, role, loading, logout } = useAuth();
   const [sTab,  setSTab]  = useState("home");
   const [cTab,  setCTab]  = useState("home");
-  const [modal, setModal] = useState(null); // null | { type, onSuccess }
+  const [aTab,  setATab]  = useState("home");
+  const [modal, setModal] = useState(null);
 
-  const openModal = (type, onSuccess) => setModal({ type, onSuccess: onSuccess || null });
+  const openModal  = (type, onSuccess) => setModal({ type, onSuccess: onSuccess || null });
   const closeModal = (didSave) => {
     if (didSave && modal?.onSuccess) modal.onSuccess();
     setModal(null);
@@ -1845,16 +2252,29 @@ export default function App() {
       default:         return <SHome     onSwitch={setSTab} />;
     }
   };
+
   const renderCoach = () => {
     switch(cTab) {
       case "home":    return <CHome    onSwitch={setCTab} />;
       case "modules": return <CModules onSwitch={setCTab} onModal={openModal} />;
       case "assign":  return <CAssign  onSwitch={setCTab} />;
       case "records": return <CRecords onSwitch={setCTab} onModal={openModal} />;
-      case "members": return <CMembers onSwitch={setCTab} />;
       default:        return <CHome    onSwitch={setCTab} />;
     }
   };
+
+  const renderAdmin = () => {
+    switch(aTab) {
+      case "home":    return <AHome    onSwitch={setATab} />;
+      case "members": return <AMembers onSwitch={setATab} />;
+      case "review":  return <AReview  onSwitch={setATab} />;
+      case "records": return <ARecords onSwitch={setATab} />;
+      default:        return <AHome    onSwitch={setATab} />;
+    }
+  };
+
+  const ROLE_LABELS = { admin:"ADMIN", coach:"COACH", student:"STUDENT" };
+  const ROLE_CLASS  = { admin:"admin",  coach:"coach",  student:"student" };
 
   if (loading) {
     return (
@@ -1914,15 +2334,17 @@ export default function App() {
             <span className="header-logo-text">iSTAR <span>Alliance</span></span>
           </div>
           <div className="header-right">
-            <span className={"role-badge "+(role==="coach"?"coach":"student")}>
-              {role==="coach"?"COACH":"STUDENT"}
+            <span className={"role-badge " + (ROLE_CLASS[role] || "student")}>
+              {ROLE_LABELS[role] || "STUDENT"}
             </span>
             <span style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>{displayName}</span>
             <button className="logout-btn" onClick={logout}>登出</button>
           </div>
         </div>
 
-        {role==="student" ? renderStudent() : renderCoach()}
+        {role === "admin"   && renderAdmin()}
+        {role === "coach"   && renderCoach()}
+        {role === "student" && renderStudent()}
 
         {modal?.type === "module" && <ModalAddModule onClose={closeModal} />}
         {modal?.type === "record" && <ModalAddRecord onClose={closeModal} />}

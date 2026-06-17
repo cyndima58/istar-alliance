@@ -4,23 +4,19 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  initializeApp as _initApp,
 } from "firebase/auth";
 import {
   doc, getDoc, setDoc, collection,
-  query, where, getDocs, addDoc, serverTimestamp,
+  query, where, getDocs, addDoc,
+  updateDoc, deleteDoc, serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
-
-/* ─────────────────────────────────────────────
-   Secondary Firebase App（專門用來建立新帳號，
-   不會把主教練登出）
-───────────────────────────────────────────── */
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
-const SECONDARY_APP_NAME = "istar-secondary";
-const firebaseConfig = {
+/* ── Secondary App（新增成員用，不影響主帳號登入狀態）── */
+const SECONDARY = "istar-secondary";
+const FB_CONFIG = {
   apiKey:            "AIzaSyAr_FH3cyWmcHFW4icnhzUd1TaPC9gERaI",
   authDomain:        "istar-alliance.firebaseapp.com",
   projectId:         "istar-alliance",
@@ -28,51 +24,45 @@ const firebaseConfig = {
   messagingSenderId: "538197880233",
   appId:             "1:538197880233:web:fad87b5466cc04d6eea8b8",
 };
+const getSecondaryAuth = () => {
+  const existing = getApps().find(a => a.name === SECONDARY);
+  return getAuth(existing ?? initializeApp(FB_CONFIG, SECONDARY));
+};
 
-function getSecondaryAuth() {
-  const existing = getApps().find(a => a.name === SECONDARY_APP_NAME);
-  const app = existing ?? initializeApp(firebaseConfig, SECONDARY_APP_NAME);
-  return getAuth(app);
-}
-
-/* ─────────────────────────────────────────────
+/* ════════════════════════════════════════
    Context
-───────────────────────────────────────────── */
+════════════════════════════════════════ */
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [profile, setProfile] = useState(null);
-  const [role,    setRole]    = useState(null);
+  const [role,    setRole]    = useState(null);   // "admin" | "coach" | "student"
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
 
-  /* ── 監聽登入狀態，從 Firestore 讀取角色 ── */
+  /* ── 登入狀態監聽 ── */
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const ref  = doc(db, "users", firebaseUser.uid);
-        const snap = await getDoc(ref);
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        const snap = await getDoc(doc(db, "users", u.uid));
         if (snap.exists()) {
           const data = snap.data();
-          setProfile({ uid: firebaseUser.uid, ...data });
+          setProfile({ uid: u.uid, ...data });
           setRole(data.role || null);
         } else {
-          setProfile(null);
-          setRole(null);
+          setProfile(null); setRole(null);
         }
-        setUser(firebaseUser);
+        setUser(u);
       } else {
-        setUser(null);
-        setProfile(null);
-        setRole(null);
+        setUser(null); setProfile(null); setRole(null);
       }
       setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  /* ── Email 登入 ── */
+  /* ── 登入 ── */
   const loginWithEmail = async (email, password) => {
     setError("");
     try {
@@ -92,43 +82,28 @@ export function AuthProvider({ children }) {
   /* ── 登出 ── */
   const logout = () => signOut(auth);
 
-  /* ══════════════════════════════════════════
-     新增成員（用 secondary auth，不影響主教練登入狀態）
-  ══════════════════════════════════════════ */
+  /* ════════════════════════════════════════
+     成員管理（管理員）
+  ════════════════════════════════════════ */
   const addMember = async (formData) => {
-    const {
-      name, email, password, role: memberRole,
-      birthdate, coachName, courseType, joinDate,
-    } = formData;
-
+    const { name, email, password, role: r, birthdate, coachName, courseType, joinDate } = formData;
     try {
-      const secondaryAuth = getSecondaryAuth();
-      const credential = await createUserWithEmailAndPassword(
-        secondaryAuth,
-        email.trim().toLowerCase(),
-        password
-      );
-      const newUid = credential.user.uid;
-      await signOut(secondaryAuth);
-
-      const userData = {
-        name,
-        email: email.trim().toLowerCase(),
-        role: memberRole,
-        isAdmin: false,
-        createdAt: serverTimestamp(),
-        status: "active",
+      const sa  = getSecondaryAuth();
+      const cred = await createUserWithEmailAndPassword(sa, email.trim().toLowerCase(), password);
+      const uid  = cred.user.uid;
+      await signOut(sa);
+      const data = {
+        name, email: email.trim().toLowerCase(),
+        role: r, isAdmin: r === "admin",
+        createdAt: serverTimestamp(), status: "active",
       };
-
-      if (memberRole === "student") {
-        userData.birthdate   = birthdate  || "";
-        userData.coachName   = coachName  || ""; // 選填，主要聯絡教練
-        userData.courseType  = courseType || "";
-        userData.joinDate    = joinDate   || "";
-        // 不再強制綁定 coachId，所有教練都可分配課程
+      if (r === "student") {
+        data.birthdate  = birthdate  || "";
+        data.coachName  = coachName  || "";
+        data.courseType = courseType || "";
+        data.joinDate   = joinDate   || "";
       }
-
-      await setDoc(doc(db, "users", newUid), userData);
+      await setDoc(doc(db, "users", uid), data);
       return { success: true };
     } catch (e) {
       const msg = {
@@ -136,131 +111,173 @@ export function AuthProvider({ children }) {
         "auth/invalid-email":        "Email 格式不正確。",
         "auth/weak-password":        "密碼至少需要 6 個字元。",
       };
-      return { success: false, error: msg[e.code] || "新增失敗：" + e.message };
+      return { success: false, error: msg[e.code] || e.message };
     }
   };
 
-  /* ── 取得所有成員（教練用）── */
   const fetchMembers = async () => {
     try {
-      const q    = query(collection(db, "users"), where("role", "in", ["student", "coach"]));
-      const snap = await getDocs(q);
+      const snap = await getDocs(query(collection(db, "users"), where("role", "in", ["admin","coach","student"])));
       return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   };
 
-  /* ── 新增課程模組 ── */
-  const addModule = async (moduleData) => {
+  const updateMember = async (uid, data) => {
+    try { await setDoc(doc(db, "users", uid), data, { merge: true }); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const deleteMember = async (uid) => {
+    try { await deleteDoc(doc(db, "users", uid)); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+
+  /* ════════════════════════════════════════
+     課程模組
+     狀態：draft（草稿）→ pending（待審）→ published（已發布）| rejected（退回）
+  ════════════════════════════════════════ */
+  const addModule = async (data) => {
     try {
       const ref = await addDoc(collection(db, "modules"), {
-        ...moduleData,
+        ...data,
         coachId:   auth.currentUser?.uid || "",
         coachName: profile?.name || "",
+        status:    "pending",   // 教練新增後直接送審
         createdAt: serverTimestamp(),
       });
       return { success: true, id: ref.id };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
-  /* ── 取得所有課程模組 ── */
-  const fetchModules = async () => {
+  const fetchModules = async (statusFilter) => {
     try {
-      const snap = await getDocs(collection(db, "modules"));
+      const q = statusFilter
+        ? query(collection(db, "modules"), where("status", "==", statusFilter))
+        : collection(db, "modules");
+      const snap = await getDocs(q);
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   };
 
-  /* ── 新增上課記錄 ── */
-  const addRecord = async (recordData) => {
+  // 管理員審核：approve | reject
+  const reviewModule = async (moduleId, action, note = "") => {
+    try {
+      await updateDoc(doc(db, "modules", moduleId), {
+        status:      action === "approve" ? "published" : "rejected",
+        reviewNote:  note,
+        reviewedBy:  profile?.name || "",
+        reviewedAt:  serverTimestamp(),
+      });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  // 教練編輯（只能在 draft / rejected 狀態）
+  const updateModule = async (moduleId, data) => {
+    try {
+      await updateDoc(doc(db, "modules", moduleId), {
+        ...data, status: "pending",   // 重新送審
+        updatedAt: serverTimestamp(),
+      });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const deleteModule = async (moduleId) => {
+    try { await deleteDoc(doc(db, "modules", moduleId)); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+
+  /* ════════════════════════════════════════
+     分配課程
+  ════════════════════════════════════════ */
+  const saveAssignment = async (studentUid, moduleIds) => {
+    try {
+      await setDoc(doc(db, "assignments", studentUid), {
+        studentUid,
+        moduleIds,
+        updatedBy:  profile?.name || "",
+        updatedAt:  serverTimestamp(),
+      });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const fetchAssignment = async (studentUid) => {
+    try {
+      const snap = await getDoc(doc(db, "assignments", studentUid));
+      return snap.exists() ? snap.data().moduleIds || [] : [];
+    } catch { return []; }
+  };
+
+  /* ════════════════════════════════════════
+     上課記錄
+  ════════════════════════════════════════ */
+  const addRecord = async (data) => {
     try {
       const ref = await addDoc(collection(db, "records"), {
-        ...recordData,
+        ...data,
         coachId:   auth.currentUser?.uid || "",
         coachName: profile?.name || "",
         createdAt: serverTimestamp(),
       });
       return { success: true, id: ref.id };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
-  /* ── 取得上課記錄 ── */
-  const fetchRecords = async () => {
+  const fetchRecords = async (studentUid) => {
     try {
-      const snap = await getDocs(collection(db, "records"));
+      const q = studentUid
+        ? query(collection(db, "records"), where("studentUid", "==", studentUid))
+        : collection(db, "records");
+      const snap = await getDocs(q);
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   };
 
-  /* ── 編輯成員資料 ── */
-  const updateMember = async (uid, data) => {
-    try {
-      await setDoc(doc(db, "users", uid), data, { merge: true });
-      return { success: true };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
+  const updateRecord = async (recordId, data) => {
+    try { await updateDoc(doc(db, "records", recordId), { ...data, updatedAt: serverTimestamp() }); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
   };
 
-  /* ── 刪除成員（僅 Firestore 資料，Auth 帳號保留）── */
-  const deleteMember = async (uid) => {
-    try {
-      const { deleteDoc } = await import("firebase/firestore");
-      await deleteDoc(doc(db, "users", uid));
-      return { success: true };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
+  const deleteRecord = async (recordId) => {
+    try { await deleteDoc(doc(db, "records", recordId)); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
   };
 
-  /* ── 新增課程模組內的學習資料（連結）── */
+  /* ════════════════════════════════════════
+     課程學習資料（模組子集合）
+  ════════════════════════════════════════ */
   const addModuleResource = async (moduleId, resource) => {
     try {
       await addDoc(collection(db, "modules", moduleId, "resources"), {
-        ...resource,
-        addedBy:   profile?.name || "",
-        addedRole: role || "",
+        ...resource, addedBy: profile?.name || "", addedRole: role || "",
         createdAt: serverTimestamp(),
       });
       return { success: true };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
-  /* ── 取得課程模組的學習資料 ── */
   const fetchModuleResources = async (moduleId) => {
     try {
       const snap = await getDocs(collection(db, "modules", moduleId, "resources"));
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   };
 
   return (
     <AuthContext.Provider value={{
       user, profile, role, loading, error, setError,
       loginWithEmail, logout,
-      addMember, fetchMembers, updateMember, deleteMember,
-      addModule, fetchModules,
-      addRecord, fetchRecords,
-      addModuleResource, fetchModuleResources,
+      /* 成員 */ addMember, fetchMembers, updateMember, deleteMember,
+      /* 模組 */ addModule, fetchModules, reviewModule, updateModule, deleteModule,
+      /* 分配 */ saveAssignment, fetchAssignment,
+      /* 記錄 */ addRecord, fetchRecords, updateRecord, deleteRecord,
+      /* 資料 */ addModuleResource, fetchModuleResources,
     }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export function useAuth() { return useContext(AuthContext); }
