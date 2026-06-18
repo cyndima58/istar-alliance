@@ -2122,4 +2122,613 @@ function LoginScreen() {
           {error && <div className="login-error">{error}</div>}
           <form onSubmit={handleSubmit}>
             <div className="input-label">Email</div>
-            <input className="input-field" type="email" placeholder="your@email.com" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="emai
+            <input className="input-field" type="email" placeholder="your@email.com" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" />
+            <div className="input-label">密碼</div>
+            <input className="input-field" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" style={{ marginBottom:18 }} />
+            <button type="submit" className="btn btn-primary" style={{ width:"100%", justifyContent:"center", padding:"13px" }} disabled={loading}>
+              {loading?"登入中…":"登入"}
+            </button>
+          </form>
+          <div className="login-no-access">
+            沒有帳號？請聯絡星辰聯盟管理員<br />取得您的專屬登入資格
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoAccessScreen({ user, logout }) {
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32 }}>
+      <div style={{ fontFamily:"var(--font)", fontSize:40, color:"var(--gold)", marginBottom:14 }}>✦</div>
+      <div style={{ fontFamily:"var(--font)", fontSize:20, fontWeight:600, color:"var(--gold)", marginBottom:10 }}>尚未取得存取權限</div>
+      <div style={{ fontSize:13, color:"var(--ink-3)", textAlign:"center", lineHeight:1.75, marginBottom:28 }}>
+        帳號（{user?.email}）<br />尚未被加入星辰聯盟系統。<br />請聯絡管理員開通您的權限。
+      </div>
+      <button className="btn" onClick={logout}>登出</button>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════
+   COACH TABS（無成員管理，移至管理員）
+════════════════════════════════════════ */
+const C_TABS = [
+  { key:"home",    label:"總覽", Icon:IcHome  },
+  { key:"modules", label:"模組", Icon:IcLayer },
+  { key:"assign",  label:"分配", Icon:IcSwap  },
+  { key:"records", label:"記錄", Icon:IcDoc   },
+];
+
+/* ════════════════════════════════════════
+   ADMIN SCREENS
+════════════════════════════════════════ */
+const A_TABS = [
+  { key:"home",    label:"總覽",   Icon:IcHome  },
+  { key:"members", label:"成員",   Icon:IcUsers },
+  { key:"review",  label:"課程管理", Icon:IcLayer },
+  { key:"records", label:"所有記錄", Icon:IcDoc  },
+];
+
+function AHome({ onSwitch }) {
+  const { profile, fetchMembers, fetchModules, fetchRecords } = useAuth();
+  const [data,    setData]    = useState({ members:[], coaches:[], students:[], modules:[], recentRecords:[] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetchMembers(),
+      fetchModules(),
+      fetchRecords(),
+    ]).then(([members, modules, records]) => {
+      const coaches  = members.filter(m => m.role === "coach");
+      const students = members.filter(m => m.role === "student");
+      const sorted   = records.sort((a,b) => (b.date||"").localeCompare(a.date||""));
+      setData({ members, coaches, students, modules, recentRecords: sorted.slice(0,4) });
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="screen-enter">
+      <div className="topbar">
+        <div>
+          <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR · 管理員</div>
+          <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, letterSpacing:".04em" }}>Admin Dashboard</div>
+        </div>
+        <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||"管"); return { background:c.bg, color:c.text, borderColor:c.bg }; })()}>
+          {(profile?.name||"管").slice(0,1)}
+        </div>
+      </div>
+      <div className="content">
+
+        {/* ── 歡迎卡 ── */}
+        <div className="card-gold" style={{ marginBottom:12 }}>
+          <div style={{ fontFamily:"var(--font)", fontSize:20, fontWeight:600 }}>{profile?.name||"管理員"}</div>
+          <div style={{ fontSize:13, color:"rgba(197,162,74,.7)", marginTop:3, fontStyle:"italic" }}>iSTAR Alliance 系統管理員</div>
+          <div style={{ display:"flex", gap:18, marginTop:14, paddingTop:14, borderTop:"1px solid rgba(197,162,74,.2)" }}>
+            {[
+              { num: data.members.length, label:"總成員" },
+              { num: data.coaches.length, label:"教練" },
+              { num: data.students.length, label:"學員" },
+              { num: data.modules.length, label:"課程模組" },
+            ].map(({ num, label }) => (
+              <div key={label} style={{ textAlign:"center" }}>
+                <div style={{ fontFamily:"var(--font)", fontSize:22, fontWeight:600, color:"var(--gold)" }}>{loading ? "—" : num}</div>
+                <div style={{ fontSize:10, color:"rgba(197,162,74,.6)", letterSpacing:".08em", textTransform:"uppercase", marginTop:2 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── 近期活動：最新成員 ── */}
+        {!loading && data.members.length > 0 && (
+          <>
+            <div className="sec-h" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span>成員概況</span>
+              <button style={{ fontSize:11, color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)", fontStyle:"italic" }} onClick={() => onSwitch("members")}>管理全部 →</button>
+            </div>
+            <div className="card" style={{ padding:"4px 14px" }}>
+              {data.members.slice(0,4).map((m, i) => {
+                const rc = m.role==="admin"
+                  ? { bg:"var(--gold-pale)", color:"var(--gold)", border:"var(--gold-line)", label:"管理員" }
+                  : m.role==="coach"
+                  ? { bg:"var(--sage-pale)", color:"var(--sage)", border:"rgba(74,123,90,.22)", label:"教練" }
+                  : { bg:"var(--slate-pale)", color:"var(--slate)", border:"rgba(58,74,107,.18)", label:"學員" };
+                return (
+                  <div key={m.uid} className="coach-row" style={i===Math.min(data.members.length,4)-1?{borderBottom:"none"}:{}}>
+                    <div className="coach-av" style={(() => { const c=getAvatarColor(m.name||""); return {background:c.bg,color:c.text,fontSize:12}; })()}>{m.name?.slice(0,2)||"??"}</div>
+                    <div style={{ flex:1 }}>
+                      <div className="coach-name">{m.name}</div>
+                      <div className="coach-tag">{m.email}</div>
+                    </div>
+                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:"var(--r-pill)", background:rc.bg, color:rc.color, border:`1px solid ${rc.border}`, flexShrink:0 }}>{rc.label}</span>
+                  </div>
+                );
+              })}
+              {data.members.length > 4 && (
+                <div style={{ textAlign:"center", fontSize:12, color:"var(--ink-3)", padding:"8px 0", fontStyle:"italic", borderTop:"1px solid var(--cream-3)" }}>
+                  共 {data.members.length} 位成員
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── 最近上課記錄 ── */}
+        {!loading && data.recentRecords.length > 0 && (
+          <>
+            <div className="sec-h" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span>最近上課記錄</span>
+              <button style={{ fontSize:11, color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)", fontStyle:"italic" }} onClick={() => onSwitch("records")}>查看全部 →</button>
+            </div>
+            {data.recentRecords.map(r => (
+              <div key={r.id} className="card card-sm" style={{ marginBottom:7 }}>
+                <div style={{ fontSize:13, fontWeight:600, fontFamily:"var(--font)" }}>{r.topic}</div>
+                <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>
+                  {r.date} · 學員：{r.studentName||"—"} · 教練：{r.coachName||"—"}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* ── 空狀態 ── */}
+        {!loading && data.members.length === 0 && (
+          <div className="card" style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, padding:"28px 16px", lineHeight:1.7 }}>
+            系統尚無成員<br />
+            <button className="btn btn-primary" style={{ marginTop:14, fontSize:13 }} onClick={() => onSwitch("members")}>
+              + 新增第一位成員
+            </button>
+          </div>
+        )}
+
+      </div>
+      <BottomNav tabs={A_TABS} active="home" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+function AMembers({ onSwitch }) {
+  // 與 CMembers 相同邏輯，管理員版
+  const { addMember, fetchMembers, updateMember, deleteMember, profile } = useAuth();
+  const [members,    setMembers]    = useState([]);
+  const [tab,        setTab]        = useState("list");
+  const [loading,    setLoading]    = useState(false);
+  const [result,     setResult]     = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const blankForm = { name:"",email:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:new Date().toISOString().slice(0,10),role:"student" };
+  const [form, setForm] = useState(blankForm);
+
+  const loadMembers = () => fetchMembers().then(setMembers).catch(() => {});
+  useEffect(() => { if(tab==="list") loadMembers(); }, [tab]);
+
+  const setField = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const handleAdd = async e => {
+    e.preventDefault();
+    if (!form.name||!form.email||!form.password) { setResult({ok:false,msg:"姓名、Email、密碼為必填。"}); return; }
+    setLoading(true); setResult(null);
+    const res = await addMember({...form});
+    setLoading(false);
+    if (res.success) { setResult({ok:true,msg:`${form.name} 已成功新增！`}); setForm({...blankForm,role:form.role}); }
+    else setResult({ok:false,msg:res.error});
+  };
+
+  const startEdit = m => { setEditTarget(m); setForm({name:m.name||"",email:m.email||"",password:"",birthdate:m.birthdate||"",coachName:m.coachName||"",courseType:m.courseType||"個人賦能班",joinDate:m.joinDate||"",role:m.role||"student"}); setTab("add"); setResult(null); };
+
+  const handleEdit = async e => {
+    e.preventDefault();
+    if (!form.name) { setResult({ok:false,msg:"姓名為必填。"}); return; }
+    setLoading(true); setResult(null);
+    const res = await updateMember(editTarget.uid, {name:form.name,birthdate:form.birthdate,coachName:form.coachName,courseType:form.courseType,joinDate:form.joinDate});
+    setLoading(false);
+    if (res.success) { setResult({ok:true,msg:`${form.name} 資料已更新！`}); setEditTarget(null); loadMembers(); }
+    else setResult({ok:false,msg:"更新失敗。"});
+  };
+
+  const handleDelete = async uid => { await deleteMember(uid); setConfirmDel(null); setMembers(ms=>ms.filter(m=>m.uid!==uid)); };
+
+  const roleColors = { admin:{bg:"var(--gold-pale)",color:"var(--gold)",border:"var(--gold-line)"}, coach:{bg:"var(--sage-pale)",color:"var(--sage)",border:"rgba(74,123,90,.22)"}, student:{bg:"var(--slate-pale)",color:"var(--slate)",border:"rgba(58,74,107,.18)"} };
+  const rc = r => roleColors[r] || roleColors.student;
+
+  return (
+    <div className="screen-enter">
+      {confirmDel && (
+        <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.5)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
+          <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:320 }}>
+            <div style={{ fontFamily:"var(--font)",fontSize:18,fontWeight:600,marginBottom:10 }}>確認刪除成員</div>
+            <div style={{ fontSize:14,color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除 <strong>{members.find(m=>m.uid===confirmDel)?.name}</strong> 嗎？</div>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
+              <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }} onClick={() => handleDelete(confirmDel)}>確認刪除</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="topbar">
+        <div className="topbar-title">成員管理</div>
+        <button className={tab==="add"?"btn btn-primary btn-sm":"btn btn-sm"} onClick={() => { if(tab==="add"){setTab("list");setEditTarget(null);setResult(null);}else{setForm(blankForm);setEditTarget(null);setTab("add");setResult(null);} }}>
+          {tab==="add" ? "← 返回" : "+ 新增成員"}
+        </button>
+      </div>
+      {tab==="list" ? (
+        <div className="content">
+          <div className="sec-h">所有成員（{members.length} 人）</div>
+          {members.length===0 && <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:36,lineHeight:1.7 }}>還沒有成員<br/><span style={{ fontSize:12 }}>點右上角「+ 新增成員」</span></div>}
+          {members.map(m => {
+            const c = rc(m.role);
+            return (
+              <div key={m.uid} className="card card-sm" style={{ marginBottom:8 }}>
+                <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+                  <div className="coach-av" style={(() => { const ac=getAvatarColor(m.name||""); return {background:ac.bg,color:ac.text,fontSize:12,flexShrink:0}; })()}>{m.name?.slice(0,2)||"??"}</div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:2 }}>
+                      <span style={{ fontSize:14,fontWeight:600,letterSpacing:"-.01em" }}>{m.name}</span>
+                      <span style={{ fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:"var(--r-pill)",background:c.bg,color:c.color,border:`1px solid ${c.border}` }}>{m.role==="admin"?"管理員":m.role==="coach"?"教練":"學員"}</span>
+                    </div>
+                    <div style={{ fontSize:11,color:"var(--ink-3)" }}>{m.email}</div>
+                    {m.courseType && <div style={{ fontSize:11,color:"var(--ink-3)",marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
+                  </div>
+                  <div style={{ display:"flex",gap:6,flexShrink:0 }}>
+                    <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:12 }} onClick={() => startEdit(m)}>編輯</button>
+                    <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:12,color:"var(--rust)",borderColor:"rgba(139,58,42,.2)",background:"var(--rust-pale)" }} onClick={() => setConfirmDel(m.uid)}>刪除</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="content">
+          {result && <div style={{ padding:"11px 14px",borderRadius:"var(--r)",marginBottom:14,fontSize:13,textAlign:"center",lineHeight:1.5,background:result.ok?"var(--sage-pale)":"var(--rust-pale)",border:`1px solid ${result.ok?"rgba(74,123,90,.22)":"rgba(139,58,42,.2)"}`,color:result.ok?"var(--sage)":"var(--rust)" }}>{result.msg}</div>}
+          {editTarget && <div style={{ padding:"7px 12px",background:"var(--slate-pale)",borderRadius:"var(--r)",marginBottom:14,fontSize:13,color:"var(--slate)",border:"1px solid rgba(58,74,107,.18)" }}>✏ 編輯：{editTarget.name}</div>}
+          <form onSubmit={editTarget ? handleEdit : handleAdd}>
+            {!editTarget && (
+              <>
+                <div className="input-label">角色</div>
+                <div className="chip-group" style={{ marginBottom:12 }}>
+                  {[["student","✦ 學員"],["coach","🎓 教練"],["admin","⚙ 管理員"]].map(([r,l]) => (
+                    <div key={r} className={"chip"+(form.role===r?" sel":"")} onClick={() => setField("role",r)}>{l}</div>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="input-label">姓名 *</div>
+            <input className="input-field" placeholder="王小明" value={form.name} onChange={e=>setField("name",e.target.value)} />
+            {!editTarget && (
+              <>
+                <div className="input-label">Email *</div>
+                <input className="input-field" type="email" placeholder="member@email.com" value={form.email} onChange={e=>setField("email",e.target.value)} />
+                <div className="input-label">初始密碼 *（至少 6 碼）</div>
+                <input className="input-field" type="text" placeholder="設定後請告知對方" value={form.password} onChange={e=>setField("password",e.target.value)} />
+              </>
+            )}
+            {(form.role==="student"||editTarget?.role==="student") && (
+              <>
+                <div className="input-label">出生年月日</div>
+                <input className="input-field" type="date" value={form.birthdate} onChange={e=>setField("birthdate",e.target.value)} />
+                <div className="input-label">課程班別</div>
+                <div className="chip-group" style={{ marginBottom:12 }}>
+                  {COURSE_TYPES.map(c=><div key={c} className={"chip"+(form.courseType===c?" sel":"")} onClick={()=>setField("courseType",c)}>{c}</div>)}
+                </div>
+                <div className="input-label">加入日期</div>
+                <input className="input-field" type="date" value={form.joinDate} onChange={e=>setField("joinDate",e.target.value)} />
+                <div className="input-label">主要聯絡教練（選填）</div>
+                <input className="input-field" placeholder="留空代表由所有教練共同協助" value={form.coachName} onChange={e=>setField("coachName",e.target.value)} />
+              </>
+            )}
+            <button type="submit" className="btn btn-primary" style={{ width:"100%",justifyContent:"center",marginTop:4 }} disabled={loading}>
+              {loading ? "處理中…" : editTarget ? "✦ 儲存變更" : `✦ 確認新增${form.role==="student"?"學員":form.role==="coach"?"教練":"管理員"}`}
+            </button>
+          </form>
+        </div>
+      )}
+      <BottomNav tabs={A_TABS} active="members" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+function AReview({ onSwitch }) {
+  const { fetchModules, deleteModule } = useAuth();
+  const [allModules, setAllModules] = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [tab,        setTab]        = useState("all");   // "all" | "mine"
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    fetchModules().then(all => {
+      setAllModules(all);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (id) => {
+    await deleteModule(id);
+    setConfirmDel(null);
+    load();
+  };
+
+  // 依教練分組
+  const grouped = allModules.reduce((acc, m) => {
+    const key = m.coachName || "未知教練";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(m);
+    return acc;
+  }, {});
+
+  const coaches = Object.keys(grouped).sort();
+
+  return (
+    <div className="screen-enter">
+      {confirmDel && (
+        <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.45)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
+          <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:320 }}>
+            <div style={{ fontFamily:"var(--font)",fontSize:18,fontWeight:600,marginBottom:10 }}>確認刪除模組</div>
+            <div style={{ fontSize:14,color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除此課程模組嗎？此動作無法復原。</div>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
+              <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }}
+                onClick={() => handleDelete(confirmDel)}>確認刪除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="topbar"><div className="topbar-title">課程管理</div></div>
+
+      <div className="content">
+        {loading ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48 }}>載入中…</div>
+        ) : allModules.length === 0 ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>
+            系統尚無課程模組<br/>
+            <span style={{ fontSize:12,fontStyle:"italic" }}>教練新增課程模組後會出現在此</span>
+          </div>
+        ) : (
+          <>
+            {/* 統計卡 */}
+            <div className="card-glass" style={{ marginBottom:14 }}>
+              <div style={{ display:"flex", gap:20 }}>
+                <div>
+                  <div style={{ fontFamily:"var(--font)", fontSize:26, fontWeight:600, color:"var(--gold)" }}>{allModules.length}</div>
+                  <div style={{ fontSize:11, color:"var(--ink-3)", letterSpacing:".06em", textTransform:"uppercase", marginTop:2 }}>課程模組</div>
+                </div>
+                <div style={{ width:1, background:"var(--cream-3)" }} />
+                <div>
+                  <div style={{ fontFamily:"var(--font)", fontSize:26, fontWeight:600, color:"var(--sage)" }}>{coaches.length}</div>
+                  <div style={{ fontSize:11, color:"var(--ink-3)", letterSpacing:".06em", textTransform:"uppercase", marginTop:2 }}>教練人數</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 依教練分組顯示 */}
+            {coaches.map(coachName => {
+              const mods = grouped[coachName];
+              const sampleMod = mods[0];
+              const color = getCoachModuleColor(sampleMod?.coachId || coachName);
+              return (
+                <div key={coachName} style={{ marginBottom:16 }}>
+                  {/* 教練標題 */}
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                    <div style={{ width:10, height:10, borderRadius:"50%", background:color.border }} />
+                    <span style={{ fontFamily:"var(--font)", fontSize:14, fontWeight:600, color:"var(--ink)" }}>{coachName}</span>
+                    <span style={{ fontSize:11, color:"var(--ink-3)", fontStyle:"italic" }}>{mods.length} 個模組</span>
+                  </div>
+                  {/* 模組列表 */}
+                  {mods.map(m => (
+                    <div key={m.id} style={{
+                      background: color.bg,
+                      border: `1px solid ${color.border}`,
+                      borderLeft: `3px solid ${color.border}`,
+                      borderRadius:"var(--r-lg)", marginBottom:7, padding:"12px 14px",
+                    }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:5 }}>
+                            {(m.stage||[]).map(s => (
+                              <span key={s} className="badge" style={{ background:"rgba(255,255,255,.8)", color:color.border, border:`1px solid ${color.border}`, fontSize:10 }}>{s}</span>
+                            ))}
+                            {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>}
+                            {(m.method||[]).map(mt => <span key={mt} className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>{mt}</span>)}
+                          </div>
+                          <div style={{ fontFamily:"var(--font)", fontSize:14, fontWeight:600 }}>{m.title}</div>
+                          {m.outline && <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:3, fontStyle:"italic", lineHeight:1.55 }}>{m.outline}</div>}
+                        </div>
+                        {/* 管理員可刪除任何模組 */}
+                        <button className="btn btn-sm"
+                          style={{ padding:"4px 10px", fontSize:11, color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)", marginLeft:10, flexShrink:0 }}
+                          onClick={() => setConfirmDel(m.id)}>刪除</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+      <BottomNav tabs={A_TABS} active="review" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+
+function ARecords({ onSwitch }) {
+  const { fetchRecords } = useAuth();
+  const [records,  setRecords]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  useEffect(() => {
+    fetchRecords().then(all => {
+      setRecords(all.sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+  return (
+    <div className="screen-enter">
+      <div className="topbar"><div className="topbar-title">所有記錄</div></div>
+      <div className="content">
+        {loading ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48 }}>載入中…</div>
+        ) : records.length === 0 ? (
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>尚無上課記錄</div>
+        ) : records.map(r => (
+          <div key={r.id} className="card" style={{ marginBottom:10 }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8 }}>
+              <div>
+                <div style={{ fontSize:15,fontWeight:600,fontFamily:"var(--font)" }}>{r.topic}</div>
+                <div style={{ fontSize:12,color:"var(--ink-3)",marginTop:2,fontStyle:"italic" }}>
+                  {r.date} · 學員：{r.studentName||"—"} · 教練：{r.coachName||"—"}
+                </div>
+              </div>
+              <div style={{ display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0,marginLeft:8 }}>
+                {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:10 }}>學員可見</span>}
+              </div>
+            </div>
+            {r.feedback && <div className="record-note"><div className="record-note-label" style={{ color:"var(--sage)" }}>給學員的回饋</div>{r.feedback}</div>}
+            {r.privateNote && <div className="record-note coach-only" style={{ marginTop:6 }}><div className="record-note-label" style={{ color:"var(--gold)" }}>教練私密備註</div>{r.privateNote}</div>}
+          </div>
+        ))}
+      </div>
+      <BottomNav tabs={A_TABS} active="records" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════
+   ROOT APP
+════════════════════════════════════════ */
+export default function App() {
+  const { user, profile, role, loading, logout } = useAuth();
+  const [sTab,  setSTab]  = useState("home");
+  const [cTab,  setCTab]  = useState("home");
+  const [aTab,  setATab]  = useState("home");
+  const [modal, setModal] = useState(null);
+
+  const openModal  = (type, onSuccess) => setModal({ type, onSuccess: onSuccess || null });
+  const closeModal = (didSave) => {
+    if (didSave && modal?.onSuccess) modal.onSuccess();
+    setModal(null);
+  };
+
+  useEffect(() => {
+    const el = document.createElement("style");
+    el.textContent = GLOBAL_CSS;
+    document.head.appendChild(el);
+    return () => document.head.removeChild(el);
+  }, []);
+
+  const renderStudent = () => {
+    switch(sTab) {
+      case "home":     return <SHome     onSwitch={setSTab} />;
+      case "courses":  return <SCourses  onSwitch={setSTab} />;
+      case "growth":   return <SGrowth   onSwitch={setSTab} />;
+      case "feedback": return <SFeedback onSwitch={setSTab} />;
+      default:         return <SHome     onSwitch={setSTab} />;
+    }
+  };
+
+  const renderCoach = () => {
+    switch(cTab) {
+      case "home":    return <CHome    onSwitch={setCTab} />;
+      case "modules": return <CModules onSwitch={setCTab} onModal={openModal} />;
+      case "assign":  return <CAssign  onSwitch={setCTab} />;
+      case "records": return <CRecords onSwitch={setCTab} onModal={openModal} />;
+      default:        return <CHome    onSwitch={setCTab} />;
+    }
+  };
+
+  const renderAdmin = () => {
+    switch(aTab) {
+      case "home":    return <AHome    onSwitch={setATab} />;
+      case "members": return <AMembers onSwitch={setATab} />;
+      case "review":  return <AReview  onSwitch={setATab} />;
+      case "records": return <ARecords onSwitch={setATab} />;
+      default:        return <AHome    onSwitch={setATab} />;
+    }
+  };
+
+  const ROLE_LABELS = { admin:"ADMIN", coach:"COACH", student:"STUDENT" };
+  const ROLE_CLASS  = { admin:"admin",  coach:"coach",  student:"student" };
+
+  if (loading) {
+    return (
+      <>
+        <Starfield />
+        <div className="app" style={{ alignItems:"center", justifyContent:"center" }}>
+          <div style={{ fontFamily:"var(--font)", fontSize:36, color:"var(--gold)", marginBottom:14 }}>✦</div>
+          <div style={{ fontSize:13, color:"var(--ink-3)", letterSpacing:".06em" }}>載入中…</div>
+        </div>
+      </>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <Starfield />
+        <div className="app">
+          <div className="app-header">
+            <div className="header-brand">
+              <span className="header-logo-mark">✦</span>
+              <span className="header-logo-text">iSTAR <span>Alliance</span></span>
+            </div>
+          </div>
+          <LoginScreen />
+        </div>
+      </>
+    );
+  }
+
+  if (!role) {
+    return (
+      <>
+        <Starfield />
+        <div className="app">
+          <div className="app-header">
+            <div className="header-brand">
+              <span className="header-logo-mark">✦</span>
+              <span className="header-logo-text">iSTAR <span>Alliance</span></span>
+            </div>
+          </div>
+          <NoAccessScreen user={user} logout={logout} />
+        </div>
+      </>
+    );
+  }
+
+  const displayName = profile?.name || user.email?.split("@")[0] || "";
+
+  return (
+    <>
+      <Starfield />
+      <div className="app">
+        <div className="app-header">
+          <div className="header-brand">
+            <span className="header-logo-mark">✦</span>
+            <span className="header-logo-text">iSTAR <span>Alliance</span></span>
+          </div>
+          <div className="header-right">
+            <span className={"role-badge " + (ROLE_CLASS[role] || "student")}>
+              {ROLE_LABELS[role] || "STUDENT"}
+            </span>
+            <span style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>{displayName}</span>
+            <button className="logout-btn" onClick={logout}>登出</button>
+          </div>
+        </div>
+
+        {role === "admin"   && renderAdmin()}
+        {role === "coach"   && renderCoach()}
+        {role === "student" && renderStudent()}
+
+        {modal?.type === "module" && <ModalAddModule onClose={closeModal} />}
+        {modal?.type === "record" && <ModalAddRecord onClose={closeModal} />}
+      </div>
+    </>
+  );
+}
