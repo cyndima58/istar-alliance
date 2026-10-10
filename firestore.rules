@@ -38,12 +38,20 @@ service cloud.firestore {
       allow write: if isCoachOrAdmin();
     }
 
-    // ── 上課記錄（學員只能讀「學員可見」的自己的記錄）──
+    // ── 上課記錄（學員只能讀「學員可見」的自己的記錄；私密備註另存在 recordNotes）──
     match /records/{recordId} {
       allow read:   if isCoachOrAdmin()
                     || (signedIn() && resource.data.studentUid == me() && resource.data.visibleStudent == true);
       allow create: if isCoachOrAdmin();
       allow update, delete: if isAdmin() || (isCoach() && resource.data.coachId == me());
+    }
+
+    // ── 教練私密備註（學員完全無法讀取）──
+    match /recordNotes/{recordId} {
+      allow read: if isCoachOrAdmin();
+      allow create, update: if isAdmin() || (isCoach() && request.resource.data.coachId == me());
+      // resource == null：刪除不存在的備註（例如記錄本來就沒寫備註）也允許，避免整批操作失敗
+      allow delete: if isAdmin() || (isCoach() && (resource == null || resource.data.coachId == me()));
     }
 
     // ── 排課行事曆 ──

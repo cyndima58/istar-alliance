@@ -8,7 +8,7 @@ import {
 import {
   doc, getDoc, setDoc, collection,
   query, where, getDocs, addDoc,
-  updateDoc, deleteDoc, serverTimestamp,
+  updateDoc, deleteDoc, serverTimestamp, deleteField,
   writeBatch, runTransaction,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -214,16 +214,47 @@ export function AuthProvider({ children }) {
   /* ════════════════════════════════════════
      上課記錄
   ════════════════════════════════════════ */
+  /*
+   * 教練私密備註存在獨立的 recordNotes/{recordId} 集合（只有教練、管理員能讀），
+   * records 本身不再含 privateNote，學員即使直接讀資料庫也看不到。
+   */
+  const noteRef = (recordId) => doc(db, "recordNotes", recordId);
+
   const addRecord = async (data) => {
     try {
-      const ref = await addDoc(collection(db, "records"), {
-        ...data,
+      const { privateNote, ...rest } = data;
+      const ref = doc(collection(db, "records"));
+      const batch = writeBatch(db);
+      batch.set(ref, {
+        ...rest,
         coachId:   auth.currentUser?.uid || "",
         coachName: profile?.name || "",
         createdAt: serverTimestamp(),
       });
+      if (privateNote) {
+        batch.set(noteRef(ref.id), {
+          text: privateNote, recordId: ref.id,
+          coachId: auth.currentUser?.uid || "", studentUid: rest.studentUid || "",
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
       return { success: true, id: ref.id };
     } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  // 舊資料把 privateNote 寫在 records 裡 → 搬到 recordNotes 並從 records 移除
+  const migrateNote = async (r) => {
+    try {
+      const batch = writeBatch(db);
+      batch.set(noteRef(r.id), {
+        text: r.privateNote, recordId: r.id,
+        coachId: r.coachId || "", studentUid: r.studentUid || "",
+        updatedAt: serverTimestamp(),
+      });
+      batch.update(doc(db, "records", r.id), { privateNote: deleteField() });
+      await batch.commit();
+    } catch { /* 沒有權限（非本人記錄）時略過，管理員登入時會完成搬移 */ }
   };
 
   const fetchRecords = async (studentUid) => {
@@ -235,18 +266,53 @@ export function AuthProvider({ children }) {
             : query(collection(db, "records"), where("studentUid", "==", studentUid)))
         : collection(db, "records");
       const snap = await getDocs(q);
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      if (role === "student") {
+        return records.map(({ privateNote, ...r }) => r);
+      }
+
+      // 教練 / 管理員：合併私密備註
+      const notesSnap = await getDocs(collection(db, "recordNotes"));
+      const notes = {};
+      notesSnap.docs.forEach(d => { notes[d.id] = d.data().text || ""; });
+      return records.map(r => {
+        if (r.privateNote && notes[r.id] === undefined &&
+            (role === "admin" || r.coachId === auth.currentUser?.uid)) {
+          migrateNote(r);
+        }
+        return { ...r, privateNote: notes[r.id] ?? r.privateNote ?? "" };
+      });
     } catch { return []; }
   };
 
   const updateRecord = async (recordId, data) => {
-    try { await updateDoc(doc(db, "records", recordId), { ...data, updatedAt: serverTimestamp() }); return { success: true }; }
-    catch (e) { return { success: false, error: e.message }; }
+    try {
+      const { privateNote, ...rest } = data;
+      const batch = writeBatch(db);
+      batch.update(doc(db, "records", recordId), { ...rest, privateNote: deleteField(), updatedAt: serverTimestamp() });
+      if (privateNote) {
+        batch.set(noteRef(recordId), {
+          text: privateNote, recordId,
+          coachId: auth.currentUser?.uid || "", studentUid: rest.studentUid || "",
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        batch.delete(noteRef(recordId));
+      }
+      await batch.commit();
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
   const deleteRecord = async (recordId) => {
-    try { await deleteDoc(doc(db, "records", recordId)); return { success: true }; }
-    catch (e) { return { success: false, error: e.message }; }
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, "records", recordId));
+      batch.delete(noteRef(recordId));
+      await batch.commit();
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
   /* ════════════════════════════════════════
