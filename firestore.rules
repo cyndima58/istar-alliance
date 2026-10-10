@@ -1,0 +1,76 @@
+rules_version = '2';
+// iSTAR Alliance — Firestore 安全規則
+// 貼到 Firebase Console → Firestore Database → 規則，按「發布」。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn()       { return request.auth != null; }
+    function me()             { return request.auth.uid; }
+    function myRole()         { return get(/databases/$(database)/documents/users/$(me())).data.role; }
+    function isAdmin()        { return signedIn() && myRole() == 'admin'; }
+    function isCoach()        { return signedIn() && myRole() == 'coach'; }
+    function isCoachOrAdmin() { return isAdmin() || isCoach(); }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // ── 成員 ──
+    match /users/{uid} {
+      allow read:  if signedIn() && (me() == uid || isCoachOrAdmin());
+      allow write: if isAdmin();
+    }
+
+    // ── 課程模組 ──
+    match /modules/{moduleId} {
+      allow read:   if signedIn();
+      allow create: if isCoach() && request.resource.data.coachId == me();
+      allow update, delete: if isAdmin() || (isCoach() && resource.data.coachId == me());
+
+      match /resources/{resourceId} {
+        allow read, create: if signedIn();
+        allow delete: if isCoachOrAdmin() || resource.data.addedBy == get(/databases/$(database)/documents/users/$(me())).data.name;
+      }
+    }
+
+    // ── 課程分配（學員要能讀自己的，才看得到「我的課程模組」）──
+    match /assignments/{studentUid} {
+      allow read:  if signedIn() && (me() == studentUid || isCoachOrAdmin());
+      allow write: if isCoachOrAdmin();
+    }
+
+    // ── 上課記錄（學員只能讀「學員可見」的自己的記錄）──
+    match /records/{recordId} {
+      allow read:   if isCoachOrAdmin()
+                    || (signedIn() && resource.data.studentUid == me() && resource.data.visibleStudent == true);
+      allow create: if isCoachOrAdmin();
+      allow update, delete: if isAdmin() || (isCoach() && resource.data.coachId == me());
+    }
+
+    // ── 排課行事曆 ──
+    // status: open 可預約 | pending 待確認 | confirmed 已排定 | reschedule 請求改期
+    match /sessions/{sessionId} {
+      allow read:   if signedIn();
+      allow create: if isCoach() && request.resource.data.coachId == me()
+                    && request.resource.data.status in ['open', 'pending'];
+      allow delete: if isAdmin() || (isCoach() && resource.data.coachId == me());
+      allow update: if isAdmin()
+                    || (isCoach() && resource.data.coachId == me())
+                    // 學員：確認或請求改期自己的課
+                    || (signedIn() && resource.data.studentUid == me()
+                        && request.resource.data.status in ['confirmed', 'reschedule']
+                        && onlyChanges(['status', 'studentNote', 'confirmedAt', 'updatedAt']))
+                    // 學員：預約開放時段（只能預約給自己，且只能從 open → confirmed）
+                    || (signedIn() && resource.data.status == 'open'
+                        && request.resource.data.status == 'confirmed'
+                        && request.resource.data.studentUid == me()
+                        && onlyChanges(['status', 'studentUid', 'studentName', 'confirmedAt', 'updatedAt']));
+    }
+
+    // ── 學員反饋 ──
+    match /feedbacks/{feedbackId} {
+      allow read:   if isCoachOrAdmin() || (signedIn() && resource.data.studentUid == me());
+      allow create: if signedIn() && request.resource.data.studentUid == me();
+      allow delete: if isAdmin();
+    }
+  }
+}

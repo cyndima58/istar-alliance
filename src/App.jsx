@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "./AuthContext";
+import {
+  SESSION_STATUS, todayStr, addDays, toMinutes, fromMinutes, buildMonthGrid,
+  formatDateLabel, relativeDayLabel, weekdayLabel, isPast, sortSessions,
+  findConflicts, repeatDates, validateSession, googleCalendarUrl, countByStatus,
+  parseDateStr,
+} from "./schedule";
 
 const GLOBAL_CSS = `
 :root {
@@ -302,6 +308,7 @@ body {
   border-color: var(--ink);
 }
 .btn-primary:hover { background: var(--ink-2); border-color: var(--ink-2); }
+.btn:disabled, .btn-primary:disabled { opacity:.38; cursor:not-allowed; }
 .btn-gold {
   background: var(--gold-pale);
   color: var(--gold);
@@ -459,6 +466,59 @@ select.input-field { appearance: none; cursor: pointer; }
 .resource-meta { font-family:var(--font); font-size:12px; color:var(--ink-4); margin-top:2px; font-style:italic; }
 .resource-empty { text-align:center; color:var(--ink-4); font-family:var(--font); font-size:13px; padding:18px 0; line-height:1.7; font-style:italic; }
 .upload-hint { font-family:var(--font); font-size:12px; color:var(--ink-4); text-align:center; margin-top:8px; line-height:1.6; font-style:italic; }
+
+/* ── Calendar & scheduling ── */
+.cal { background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:12px 10px 10px; margin-bottom:12px; }
+.cal-head { display:flex; align-items:center; justify-content:space-between; padding:0 4px 10px; }
+.cal-title { font-family:var(--font); font-size:17px; font-weight:600; letter-spacing:.02em; }
+.cal-nav { width:30px; height:30px; border-radius:50%; border:1px solid var(--cream-3); background:#fff; color:var(--ink-2); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; }
+.cal-nav:hover { border-color:var(--gold-line); color:var(--gold); }
+.cal-wk { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:10px; color:var(--ink-4); letter-spacing:.08em; margin-bottom:4px; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.cal-day { position:relative; height:42px; border:none; background:none; border-radius:10px; cursor:pointer; font-family:var(--font); font-size:14px; color:var(--ink); display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:6px; transition:background .15s; }
+.cal-day:hover { background:var(--cream-2); }
+.cal-day.out { color:var(--ink-4); opacity:.5; }
+.cal-day.past { color:var(--ink-4); }
+.cal-day.today .cal-num { border:1px solid var(--gold); color:var(--gold); font-weight:700; }
+.cal-day.sel { background:var(--ink); }
+.cal-day.sel .cal-num { color:var(--cream); border-color:transparent; }
+.cal-num { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; line-height:1; }
+.cal-dots { display:flex; gap:2px; margin-top:3px; height:5px; }
+.cal-dot { width:5px; height:5px; border-radius:50%; }
+.status-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:var(--r-pill); font-family:var(--font); font-size:11px; font-weight:600; letter-spacing:.04em; white-space:nowrap; }
+.status-pill::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.sess { display:flex; gap:12px; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:border-color .15s, transform .15s; text-align:left; width:100%; font-family:var(--font); color:var(--ink); }
+.sess:hover { border-color:var(--gold-line); }
+.sess:active { transform:scale(.99); }
+.sess.past { opacity:.6; }
+.sess-time { min-width:48px; text-align:center; border-right:1px solid var(--cream-3); padding-right:12px; }
+.sess-start { font-size:16px; font-weight:600; line-height:1.1; }
+.sess-end { font-size:11px; color:var(--ink-4); margin-top:2px; }
+.sess-body { flex:1; min-width:0; }
+.sess-title { font-size:15px; font-weight:600; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sess-meta { font-size:12px; color:var(--ink-3); margin-top:3px; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.filter-row { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:12px; scrollbar-width:none; }
+.filter-row::-webkit-scrollbar { display:none; }
+.filter-chip { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:var(--r-pill); border:1px solid var(--cream-3); background:#fff; font-family:var(--font); font-size:12px; font-weight:600; color:var(--ink-3); cursor:pointer; }
+.filter-chip .n { font-size:12px; min-width:18px; height:18px; padding:0 5px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; background:var(--cream-2); color:var(--ink-2); }
+.filter-chip.on { border-color:currentColor; }
+.seg { display:flex; background:var(--cream-2); border:1px solid var(--cream-3); border-radius:var(--r-pill); padding:3px; margin-bottom:14px; }
+.seg button { flex:1; padding:8px 6px; border:none; border-radius:var(--r-pill); background:transparent; font-family:var(--font); font-size:13px; font-weight:600; color:var(--ink-3); cursor:pointer; }
+.seg button.on { background:#fff; color:var(--ink); box-shadow:0 1px 4px rgba(28,26,23,.08); }
+.time-row { display:flex; gap:8px; align-items:center; }
+.time-row .input-field { flex:1; }
+.alert-card { border-radius:var(--r-lg); padding:14px 16px; margin-bottom:12px; border:1px solid; }
+.check-row { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid var(--cream-3); border-radius:var(--r); background:#fff; cursor:pointer; margin-bottom:10px; font-family:var(--font); font-size:14px; color:var(--ink); width:100%; text-align:left; }
+.check-box { width:20px; height:20px; border-radius:5px; border:1.5px solid var(--ink-4); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .15s; }
+.check-row.on { border-color:rgba(74,123,90,.4); background:var(--sage-pale); }
+.check-row.on .check-box { background:var(--sage); border-color:var(--sage); }
+.detail-line { display:flex; gap:12px; padding:9px 0; border-bottom:1px solid var(--cream-3); font-family:var(--font); font-size:14px; }
+.detail-line:last-child { border-bottom:none; }
+.detail-line .k { width:64px; flex-shrink:0; font-size:11px; color:var(--ink-4); letter-spacing:.08em; text-transform:uppercase; font-weight:600; padding-top:2px; }
+.detail-line .v { flex:1; color:var(--ink); line-height:1.55; word-break:break-word; }
+.empty { text-align:center; color:var(--ink-3); font-size:13px; padding:28px 12px; line-height:1.7; }
+.toast { position:absolute; left:50%; bottom:80px; transform:translateX(-50%); background:var(--ink); color:var(--cream); padding:10px 18px; border-radius:var(--r-pill); font-family:var(--font); font-size:13px; z-index:80; box-shadow:0 6px 24px rgba(28,26,23,.25); animation:fadeUp .2s var(--ease-out) both; white-space:nowrap; }
+.nav-badge { position:absolute; top:7px; left:calc(50% + 6px); min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--rust); color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; letter-spacing:0; }
 `;
 
 
@@ -576,14 +636,21 @@ const IcLock  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none
 const IcLink  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>;
 const IcFile  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 const IcImg   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
+const IcCal   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+const IcCheck = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>;
 const IcPlus  = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 
+// 底部導覽：可在 tab 上顯示待處理數量（例如學員有幾堂課待確認）
+const NavBadgeContext = React.createContext({});
+
 function BottomNav({ tabs, active, onSwitch }) {
+  const badges = React.useContext(NavBadgeContext);
   return (
     <div className="bottom-nav">
       {tabs.map(({ key, label, Icon }) => (
         <button key={key} className={"nav-item"+(active===key?" active":"")} onClick={() => onSwitch(key)}>
           <Icon /><span>{label}</span>
+          {badges[key] > 0 && <span className="nav-badge">{badges[key]}</span>}
         </button>
       ))}
     </div>
@@ -596,7 +663,7 @@ function BottomNav({ tabs, active, onSwitch }) {
 
 /* ── Resource Upload Panel ── */
 function ResourcePanel({ moduleId }) {
-  const { role: userRole, addModuleResource, fetchModuleResources } = useAuth();
+  const { role: userRole, profile, addModuleResource, fetchModuleResources, deleteModuleResource } = useAuth();
   const [tab,       setTab]     = useState("link");
   const [linkVal,   setLink]    = useState("");
   const [linkName,  setName]    = useState("");
@@ -612,6 +679,7 @@ function ResourcePanel({ moduleId }) {
           url:  r.url  || "",
           size: r.size || "",
           by:   r.addedRole || userRole,
+          byName: r.addedBy || "",
           ts:   r.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || "—",
           id:   r.id,
         })));
@@ -626,8 +694,12 @@ function ResourcePanel({ moduleId }) {
     setSaving(true);
     if (moduleId) {
       await addModuleResource(moduleId, { type:"link", name, url });
+      // 重新載入以取得 Firestore id（才能刪除）
+      const list = await fetchModuleResources(moduleId);
+      setRes(list.map(r => ({ type:r.type||"link", name:r.name||r.url, url:r.url||"", size:r.size||"", by:r.addedRole||"", byName:r.addedBy||"", ts:r.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || "剛剛", id:r.id })));
+    } else {
+      setRes(r => [...r, { type:"link", name, url, by: userRole, byName: profile?.name || "", ts: new Date().toLocaleDateString("zh-TW") }]);
     }
-    setRes(r => [...r, { type:"link", name, url, by: userRole, ts: new Date().toLocaleDateString("zh-TW") }]);
     setLink(""); setName(""); setSaving(false);
   };
 
@@ -708,13 +780,18 @@ function ResourcePanel({ moduleId }) {
                   }
                 </div>
                 <div className="resource-meta">
-                  {r.size ? r.size + " · " : ""}{r.by === "coach" ? "教練上傳" : "學員上傳"} · {r.ts}
+                  {r.size ? r.size + " · " : ""}{r.byName ? r.byName + " · " : ""}{r.by === "coach" ? "教練" : r.by === "admin" ? "管理員" : "學員"}上傳 · {r.ts}
                 </div>
               </div>
-              <button onClick={() => setRes(res => res.filter((_,j) => j!==i))}
+              {(!r.id || userRole !== "student" || r.byName === profile?.name) && (
+              <button onClick={async () => {
+                  if (r.id && moduleId) await deleteModuleResource(moduleId, r.id);
+                  setRes(res => res.filter((_,j) => j!==i));
+                }}
                 style={{ border:"none", background:"none", color:"var(--ink-4)", cursor:"pointer", fontSize:18, padding:"0 2px", lineHeight:1 }}>
                 ×
               </button>
+              )}
             </div>
           ))}
         </div>
@@ -916,20 +993,22 @@ function ModalAddModule({ onClose, editData }) {
   );
 }
 
-function ModalAddRecord({ onClose }) {
-  const { fetchMembers, addRecord } = useAuth();
+function ModalAddRecord({ onClose, prefill, editData }) {
+  const { fetchMembers, addRecord, updateRecord } = useAuth();
+  const isEdit = !!editData;
+  const src = editData || prefill || {};
   const [students,  setStudents]  = useState([]);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
   const [form, setForm] = useState({
-    studentUid:   "",
-    studentName:  "",
-    date:         new Date().toISOString().slice(0,10),
-    topic:        "",
-    feedback:     "",
-    privateNote:  "",
-    visibleStudent: true,
-    visibleCoach:   true,
+    studentUid:   src.studentUid  || "",
+    studentName:  src.studentName || "",
+    date:         src.date        || todayStr(),
+    topic:        src.topic       || "",
+    feedback:     src.feedback    || "",
+    privateNote:  src.privateNote || "",
+    visibleStudent: src.visibleStudent ?? true,
+    visibleCoach:   src.visibleCoach   ?? true,
   });
 
   useEffect(() => {
@@ -944,7 +1023,7 @@ function ModalAddRecord({ onClose }) {
     if (!form.studentUid) { setError("請選擇學員"); return; }
     if (!form.topic.trim()) { setError("請填寫課程主題"); return; }
     setLoading(true); setError("");
-    const res = await addRecord({
+    const payload = {
       studentUid:     form.studentUid,
       studentName:    form.studentName,
       date:           form.date,
@@ -953,7 +1032,9 @@ function ModalAddRecord({ onClose }) {
       privateNote:    form.privateNote.trim(),
       visibleStudent: form.visibleStudent,
       visibleCoach:   form.visibleCoach,
-    });
+      ...(prefill?.sessionId ? { sessionId: prefill.sessionId } : {}),
+    };
+    const res = isEdit ? await updateRecord(editData.id, payload) : await addRecord(payload);
     setLoading(false);
     if (res.success) {
       onClose(true);
@@ -966,7 +1047,7 @@ function ModalAddRecord({ onClose }) {
     <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) onClose(false); }}>
       <div className="modal-sheet">
         <div className="modal-handle" />
-        <div className="modal-title">新增上課記錄</div>
+        <div className="modal-title">{isEdit ? "編輯上課記錄" : "新增上課記錄"}</div>
 
         {error && (
           <div style={{ background:"var(--rust-pale)", border:"1px solid rgba(139,58,42,.2)", borderRadius:"var(--r)", padding:"10px 14px", fontSize:13, color:"var(--rust)", marginBottom:14 }}>
@@ -1025,6 +1106,468 @@ function ModalAddRecord({ onClose }) {
 }
 
 /* ════════════════════════════════════════
+   排課行事曆：共用元件
+════════════════════════════════════════ */
+function StatusPill({ status }) {
+  const st = SESSION_STATUS[status] || SESSION_STATUS.pending;
+  return (
+    <span className="status-pill" style={{ background:st.bg, color:st.color, border:`1px solid ${st.border}` }}>
+      {st.label}
+    </span>
+  );
+}
+
+function Toast({ msg, onDone }) {
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(onDone, 2400);
+    return () => clearTimeout(t);
+  }, [msg]);
+  return msg ? <div className="toast">{msg}</div> : null;
+}
+
+/* ── 月曆 ── */
+function ScheduleCalendar({ sessions, selected, onSelect }) {
+  const sel = parseDateStr(selected || todayStr());
+  const [ym, setYm] = useState({ y: sel.getFullYear(), m: sel.getMonth() });
+  const today = todayStr();
+  const cells = buildMonthGrid(ym.y, ym.m);
+
+  // 每天最多顯示 3 個狀態點（依狀態去重）
+  const dotsByDate = {};
+  sessions.forEach(s => {
+    const arr = dotsByDate[s.date] || (dotsByDate[s.date] = []);
+    if (!arr.includes(s.status)) arr.push(s.status);
+  });
+
+  const shift = (n) => setYm(({ y, m }) => {
+    const d = new Date(y, m + n, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+
+  return (
+    <div className="cal">
+      <div className="cal-head">
+        <button className="cal-nav" onClick={() => shift(-1)} aria-label="上個月">‹</button>
+        <div style={{ textAlign:"center" }}>
+          <div className="cal-title">{ym.y} 年 {ym.m + 1} 月</div>
+          <button style={{ border:"none", background:"none", fontFamily:"var(--font)", fontSize:11, color:"var(--gold)", cursor:"pointer", fontStyle:"italic" }}
+            onClick={() => { const t = new Date(); setYm({ y:t.getFullYear(), m:t.getMonth() }); onSelect(today); }}>
+            回到今天
+          </button>
+        </div>
+        <button className="cal-nav" onClick={() => shift(1)} aria-label="下個月">›</button>
+      </div>
+      <div className="cal-wk">{["日","一","二","三","四","五","六"].map(w => <div key={w}>{w}</div>)}</div>
+      <div className="cal-grid">
+        {cells.map(c => {
+          const cls = ["cal-day",
+            !c.inMonth && "out",
+            c.date < today && "past",
+            c.date === today && "today",
+            c.date === selected && "sel"].filter(Boolean).join(" ");
+          const dots = (dotsByDate[c.date] || []).slice(0, 3);
+          return (
+            <button key={c.date} className={cls} onClick={() => onSelect(c.date)}>
+              <span className="cal-num">{c.day}</span>
+              <span className="cal-dots">
+                {dots.map(st => <span key={st} className="cal-dot" style={{ background: SESSION_STATUS[st]?.color || "var(--ink-4)" }} />)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap", marginTop:10, paddingTop:10, borderTop:"1px solid var(--cream-3)" }}>
+        {["open","pending","confirmed","reschedule"].map(k => (
+          <span key={k} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--ink-3)" }}>
+            <span className="cal-dot" style={{ background: SESSION_STATUS[k].color }} />{SESSION_STATUS[k].label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── 單一課程時段卡片 ── */
+function SessionItem({ s, viewer, onOpen, showDate }) {
+  const color = getCoachModuleColor(s.coachId || "");
+  const who = viewer === "student"
+    ? `教練 ${s.coachName || "—"}`
+    : s.status === "open" ? "開放給學員預約" : `學員 ${s.studentName || "—"}`;
+  const extra = viewer === "admin" ? ` · 教練 ${s.coachName || "—"}` : "";
+  return (
+    <button className={"sess" + (isPast(s) ? " past" : "")} style={{ borderLeft:`3px solid ${color.border}` }} onClick={() => onOpen(s)}>
+      <div className="sess-time">
+        {showDate && <div style={{ fontSize:10, color:"var(--gold)", fontWeight:700, marginBottom:3, letterSpacing:".04em" }}>{relativeDayLabel(s.date)}</div>}
+        <div className="sess-start">{s.start}</div>
+        <div className="sess-end">{s.end}</div>
+      </div>
+      <div className="sess-body">
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+          <div className="sess-title">{s.moduleTitle || "一對一課程"}</div>
+          <StatusPill status={s.status} />
+        </div>
+        <div className="sess-meta">{who}{extra} · {s.method || "線上"}{s.recorded ? " · 已記錄" : ""}</div>
+      </div>
+    </button>
+  );
+}
+
+/* ── 課程時段詳情（依角色顯示不同操作）── */
+function SessionSheet({ s, viewer, onClose, onChanged, onEdit, onWriteRecord }) {
+  const { confirmSession, requestReschedule, bookOpenSession, deleteSession } = useAuth();
+  const [agree,     setAgree]     = useState(false);
+  const [askChange, setAskChange] = useState(false);
+  const [note,      setNote]      = useState("");
+  const [busy,      setBusy]      = useState(false);
+  const [error,     setError]     = useState("");
+  const [confirmDel, setConfirmDel] = useState(false);
+  const past = isPast(s);
+  const isLink = /^https?:\/\//i.test(s.location || "");
+
+  const run = async (fn, okMsg) => {
+    setBusy(true); setError("");
+    const res = await fn();
+    setBusy(false);
+    if (res.success) { onChanged(okMsg); onClose(); }
+    else setError(res.error && res.error.length < 60 ? res.error : "操作失敗，請再試一次。");
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-sheet">
+        <div className="modal-handle" />
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:12, color:"var(--gold)", fontWeight:700, letterSpacing:".06em" }}>
+              {relativeDayLabel(s.date)} · {formatDateLabel(s.date)}
+            </div>
+            <div className="modal-title" style={{ marginBottom:0, marginTop:4 }}>{s.moduleTitle || "一對一課程"}</div>
+          </div>
+          <StatusPill status={s.status} />
+        </div>
+
+        {error && <div className="login-error">{error}</div>}
+
+        <div className="card" style={{ padding:"4px 16px", marginBottom:14 }}>
+          <div className="detail-line"><span className="k">時間</span><span className="v">{s.start} – {s.end}（{toMinutes(s.end) - toMinutes(s.start)} 分鐘）</span></div>
+          <div className="detail-line"><span className="k">教練</span><span className="v">{s.coachName || "—"}</span></div>
+          {s.status !== "open" && <div className="detail-line"><span className="k">學員</span><span className="v">{s.studentName || "—"}</span></div>}
+          <div className="detail-line"><span className="k">方式</span><span className="v">{s.method || "線上"}</span></div>
+          {s.location && (
+            <div className="detail-line"><span className="k">{isLink ? "連結" : "地點"}</span>
+              <span className="v">{isLink ? <a href={s.location} target="_blank" rel="noopener noreferrer" style={{ color:"var(--slate)" }}>{s.location}</a> : s.location}</span>
+            </div>
+          )}
+          {s.note && <div className="detail-line"><span className="k">備註</span><span className="v">{s.note}</span></div>}
+        </div>
+
+        {/* 學員提出的改期原因（教練與學員都看得到） */}
+        {s.status === "reschedule" && (
+          <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)" }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"var(--rust)", letterSpacing:".06em" }}>學員請求改期</div>
+            <div style={{ fontSize:14, color:"var(--ink-2)", marginTop:4, fontStyle:"italic", lineHeight:1.6 }}>
+              {s.studentNote || "（未填寫原因）"}
+            </div>
+            {viewer === "student" && <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:6 }}>已通知教練，等待重新安排時間。</div>}
+          </div>
+        )}
+
+        {/* ── 學員操作 ── */}
+        {viewer === "student" && s.status === "pending" && !past && !askChange && (
+          <>
+            <button className={"check-row" + (agree ? " on" : "")} onClick={() => setAgree(a => !a)}>
+              <span className="check-box">{agree && <IcCheck />}</span>
+              <span>確認課程時間：我可以在此時段準時出席</span>
+            </button>
+            <button className="btn btn-primary" style={{ width:"100%", padding:12 }} disabled={!agree || busy}
+              onClick={() => run(() => confirmSession(s.id), "已確認，課程已排定 ✓")}>
+              {busy ? "處理中…" : "✦ 確認課程時間"}
+            </button>
+            <button className="btn" style={{ width:"100%", marginTop:8, color:"var(--ink-3)" }} onClick={() => setAskChange(true)}>
+              這個時間不行？請求改期
+            </button>
+          </>
+        )}
+        {viewer === "student" && askChange && (
+          <>
+            <div className="input-label">告訴教練原因或你方便的時間</div>
+            <textarea className="input-field" rows={3} placeholder="例：當天要出差，週四晚上或週六下午可以" value={note} onChange={e => setNote(e.target.value)} />
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" onClick={() => setAskChange(false)}>返回</button>
+              <button className="btn btn-primary" disabled={busy || !note.trim()}
+                onClick={() => run(() => requestReschedule(s.id, note.trim()), "已送出改期請求")}>送出</button>
+            </div>
+          </>
+        )}
+        {viewer === "student" && s.status === "open" && !past && (
+          <button className="btn btn-primary" style={{ width:"100%", padding:12 }} disabled={busy}
+            onClick={() => run(() => bookOpenSession(s.id), "預約成功，課程已排定 ✓")}>
+            {busy ? "預約中…" : "✦ 預約此時段"}
+          </button>
+        )}
+        {viewer === "student" && s.status === "confirmed" && !past && (
+          <div className="btn-row" style={{ marginTop:0 }}>
+            <a className="btn" href={googleCalendarUrl(s)} target="_blank" rel="noopener noreferrer" style={{ textDecoration:"none" }}>加入 Google 行事曆</a>
+            {isLink && <a className="btn btn-primary" href={s.location} target="_blank" rel="noopener noreferrer" style={{ textDecoration:"none" }}>進入線上教室</a>}
+          </div>
+        )}
+
+        {/* ── 教練操作 ── */}
+        {viewer === "coach" && !confirmDel && (
+          <>
+            {past && s.studentUid && s.status === "confirmed" && !s.recorded && (
+              <button className="btn btn-primary" style={{ width:"100%", padding:12, marginBottom:8 }} onClick={() => onWriteRecord(s)}>
+                ✦ 填寫這堂課的上課記錄
+              </button>
+            )}
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" onClick={() => onEdit(s)}>{s.status === "reschedule" ? "重新安排時間" : "編輯時段"}</button>
+              <button className="btn" style={{ color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }}
+                onClick={() => setConfirmDel(true)}>{past ? "刪除" : "取消課程"}</button>
+            </div>
+          </>
+        )}
+        {(viewer === "admin" && !confirmDel) && (
+          <button className="btn" style={{ width:"100%", color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }}
+            onClick={() => setConfirmDel(true)}>刪除此時段</button>
+        )}
+        {confirmDel && (
+          <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)", marginBottom:0 }}>
+            <div style={{ fontSize:14, color:"var(--ink-2)", marginBottom:10 }}>確定要{past ? "刪除" : "取消"}這個時段嗎？學員端也會一併移除。</div>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn" onClick={() => setConfirmDel(false)}>返回</button>
+              <button className="btn" style={{ background:"var(--rust)", color:"#fff", borderColor:"var(--rust)" }} disabled={busy}
+                onClick={() => run(() => deleteSession(s.id), "時段已移除")}>確認</button>
+            </div>
+          </div>
+        )}
+
+        <button className="btn" style={{ width:"100%", marginTop:10, border:"none", background:"none", color:"var(--ink-3)" }} onClick={onClose}>關閉</button>
+      </div>
+    </div>
+  );
+}
+
+/* ── 教練：新增 / 編輯排課 ── */
+const DURATIONS = [[60,"1 小時"],[90,"1.5 小時"],[120,"2 小時"],[180,"3 小時"]];
+const REPEATS   = [[1,"單次"],[4,"每週 ×4"],[8,"每週 ×8"],[12,"每週 ×12"]];
+
+function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
+  const { profile, fetchMembers, fetchModules, fetchAssignment, fetchSessions, addSessions, updateSession } = useAuth();
+  const isEdit = !!editData;
+  const [students,  setStudents]  = useState([]);
+  const [myModules, setMyModules] = useState([]);
+  const [assignedIds, setAssignedIds] = useState([]);
+  const [studentSessions, setStudentSessions] = useState([]);
+  const [busy,  setBusy]  = useState(false);
+  const [error, setError] = useState("");
+  const [ackConflict, setAckConflict] = useState(false);
+
+  const startDate = defaultDate && defaultDate >= todayStr() ? defaultDate : todayStr();
+  const [form, setForm] = useState({
+    mode:       editData ? (editData.status === "open" ? "open" : "assign") : "assign",
+    studentUid: editData?.studentUid || "",
+    moduleId:   editData?.moduleId   || "",
+    date:       editData?.date       || startDate,
+    start:      editData?.start      || "19:00",
+    end:        editData?.end        || "21:00",
+    method:     editData?.method     || "線上",
+    location:   editData?.location   || "",
+    note:       editData?.note       || "",
+    repeat:     1,
+  });
+  const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setAckConflict(false); };
+
+  useEffect(() => {
+    fetchMembers().then(all => setStudents(all.filter(m => m.role === "student"))).catch(() => {});
+    fetchModules().then(all => setMyModules(all.filter(m => m.coachId === profile?.uid))).catch(() => {});
+  }, [profile?.uid]);
+
+  // 選了學員 → 載入該學員已分配的模組（排在最前面）與他的其他課程（檢查衝堂）
+  useEffect(() => {
+    if (!form.studentUid || form.mode !== "assign") { setAssignedIds([]); setStudentSessions([]); return; }
+    fetchAssignment(form.studentUid).then(setAssignedIds).catch(() => {});
+    fetchSessions({ studentUid: form.studentUid }).then(setStudentSessions).catch(() => {});
+  }, [form.studentUid, form.mode]);
+
+  const duration = toMinutes(form.end) - toMinutes(form.start);
+  const setDuration = (min) => set("end", fromMinutes(toMinutes(form.start) + min));
+
+  const sortedModules = [...myModules].sort((a, b) =>
+    (assignedIds.includes(b.id) ? 1 : 0) - (assignedIds.includes(a.id) ? 1 : 0));
+
+  const dates = isEdit ? [form.date] : repeatDates(form.date, form.repeat);
+  const pool  = [...coachSessions, ...studentSessions.filter(x => !coachSessions.find(c => c.id === x.id))];
+  const conflicts = dates.flatMap(d => findConflicts(
+    { date:d, start:form.start, end:form.end, coachId:profile?.uid, studentUid: form.mode === "assign" ? form.studentUid : "" },
+    pool, editData?.id));
+
+  const handleSave = async () => {
+    const msg = validateSession(form);
+    if (msg) { setError(msg); return; }
+    if (conflicts.length && !ackConflict) { setAckConflict(true); setError(""); return; }
+    setBusy(true); setError("");
+    const student = students.find(s => s.uid === form.studentUid);
+    const mod     = myModules.find(m => m.id === form.moduleId);
+    const base = {
+      studentUid:  form.mode === "assign" ? form.studentUid : "",
+      studentName: form.mode === "assign" ? (student?.name || "") : "",
+      moduleId:    form.moduleId || "",
+      moduleTitle: mod?.title || "",
+      start: form.start, end: form.end,
+      method: form.method, location: form.location.trim(), note: form.note.trim(),
+    };
+    let res;
+    if (isEdit) {
+      const changedTime = form.date !== editData.date || form.start !== editData.start || form.end !== editData.end;
+      const changedStudent = base.studentUid !== (editData.studentUid || "");
+      let status = editData.status;
+      if (form.mode === "open") status = changedStudent || editData.status !== "open" ? "open" : editData.status;
+      // 時間或學員有變動 → 需要學員重新確認
+      else if (editData.status === "open" || changedTime || changedStudent || editData.status === "reschedule") status = "pending";
+      res = await updateSession(editData.id, { ...base, date: form.date, status, studentNote: status === "pending" ? "" : (editData.studentNote || "") });
+    } else {
+      const seriesId = dates.length > 1 ? `s${Date.now()}` : "";
+      res = await addSessions(dates.map(d => ({
+        ...base, date: d, seriesId,
+        status: form.mode === "assign" ? "pending" : "open",
+        studentNote: "",
+      })));
+    }
+    setBusy(false);
+    if (res.success) onClose(true, isEdit ? "時段已更新" : dates.length > 1 ? `已建立 ${dates.length} 堂課` : "已建立時段");
+    else setError("儲存失敗，請再試一次。");
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(false); }}>
+      <div className="modal-sheet">
+        <div className="modal-handle" />
+        <div className="modal-title">{isEdit ? "編輯時段" : "新增排課"}</div>
+
+        <div className="seg">
+          <button className={form.mode === "assign" ? "on" : ""} onClick={() => set("mode", "assign")}>指定學員</button>
+          <button className={form.mode === "open" ? "on" : ""} onClick={() => set("mode", "open")}>開放預約時段</button>
+        </div>
+        <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:-6, marginBottom:14, fontStyle:"italic", lineHeight:1.6 }}>
+          {form.mode === "assign"
+            ? "排給指定學員，狀態為「待確認」，學員確認後變成「已排定」。"
+            : "開放給學員自行預約，狀態為「可預約」，學員預約後直接「已排定」。"}
+        </div>
+
+        {error && <div className="login-error">{error}</div>}
+
+        {form.mode === "assign" && (
+          <>
+            <div className="input-label">學員 *</div>
+            {students.length === 0
+              ? <div style={{ fontSize:13, color:"var(--ink-3)", marginBottom:12, fontStyle:"italic" }}>尚無學員，請管理員先新增學員。</div>
+              : <div className="chip-group">
+                  {students.map(st => (
+                    <div key={st.uid} className={"chip" + (form.studentUid === st.uid ? " sel" : "")} onClick={() => set("studentUid", st.uid)}>{st.name}</div>
+                  ))}
+                </div>}
+          </>
+        )}
+
+        <div className="input-label">課程模組</div>
+        <select className="input-field" value={form.moduleId} onChange={e => set("moduleId", e.target.value)}>
+          <option value="">一對一課程（不指定模組）</option>
+          {sortedModules.map(m => (
+            <option key={m.id} value={m.id}>{assignedIds.includes(m.id) ? "★ " : ""}{m.title}</option>
+          ))}
+        </select>
+        {myModules.length === 0 && <div style={{ fontSize:12, color:"var(--ink-4)", marginTop:-6, marginBottom:10, fontStyle:"italic" }}>你還沒有課程模組，可先到「模組」新增。</div>}
+        {assignedIds.length > 0 && <div style={{ fontSize:12, color:"var(--ink-4)", marginTop:-6, marginBottom:10, fontStyle:"italic" }}>★ 為已分配給此學員的模組</div>}
+
+        <div className="input-label">日期 *</div>
+        <input className="input-field" type="date" min={todayStr()} value={form.date} onChange={e => set("date", e.target.value)} />
+
+        <div className="input-label">時間 *</div>
+        <div className="time-row">
+          <input className="input-field" type="time" step="900" value={form.start}
+            onChange={e => { const st = e.target.value; setForm(f => ({ ...f, start: st, end: fromMinutes(toMinutes(st) + Math.max(duration, 30)) })); setAckConflict(false); }} />
+          <span style={{ color:"var(--ink-4)", marginBottom:10 }}>–</span>
+          <input className="input-field" type="time" step="900" value={form.end} onChange={e => set("end", e.target.value)} />
+        </div>
+        <div className="chip-group">
+          {DURATIONS.map(([min, label]) => (
+            <div key={min} className={"chip" + (duration === min ? " sel" : "")} onClick={() => setDuration(min)}>{label}</div>
+          ))}
+        </div>
+
+        {!isEdit && (
+          <>
+            <div className="input-label">重複</div>
+            <div className="chip-group">
+              {REPEATS.map(([n, label]) => (
+                <div key={n} className={"chip" + (form.repeat === n ? " sel" : "")} onClick={() => set("repeat", n)}>{label}</div>
+              ))}
+            </div>
+            {form.repeat > 1 && (
+              <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:-4, marginBottom:12, fontStyle:"italic" }}>
+                將建立 {form.repeat} 堂：每週{weekdayLabel(form.date)} {form.start}，從 {formatDateLabel(form.date)} 到 {formatDateLabel(dates[dates.length - 1])}
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="input-label">上課方式</div>
+        <div className="chip-group">
+          {["線上","實體"].map(m => <div key={m} className={"chip" + (form.method === m ? " sel" : "")} onClick={() => set("method", m)}>{m}</div>)}
+        </div>
+        <div className="input-label">{form.method === "線上" ? "線上教室連結" : "上課地點"}</div>
+        <input className="input-field" placeholder={form.method === "線上" ? "https://meet.google.com/..." : "例：台北市信義區…"} value={form.location} onChange={e => set("location", e.target.value)} />
+
+        <div className="input-label">給學員的備註（選填）</div>
+        <textarea className="input-field" rows={2} placeholder="例：請先完成上週的定位練習" value={form.note} onChange={e => set("note", e.target.value)} />
+
+        {conflicts.length > 0 && (
+          <div className="alert-card" style={{ background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#8A6820" }}>⚠ 有 {conflicts.length} 個時段衝堂</div>
+            {conflicts.slice(0, 3).map(c => (
+              <div key={c.id + c.date} style={{ fontSize:12, color:"var(--ink-2)", marginTop:4 }}>
+                {formatDateLabel(c.date)} {c.start}–{c.end} · {c.moduleTitle || "一對一課程"} · {c.coachId === profile?.uid ? (c.studentName || "開放時段") : `${c.coachName} 教練的課`}
+              </div>
+            ))}
+            {ackConflict && <div style={{ fontSize:12, color:"#8A6820", marginTop:6, fontStyle:"italic" }}>再按一次「仍要排課」即可建立。</div>}
+          </div>
+        )}
+
+        <div className="btn-row">
+          <button className="btn" onClick={() => onClose(false)}>取消</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={busy}>
+            {busy ? "儲存中…" : ackConflict ? "仍要排課" : isEdit ? "✦ 儲存變更" : form.mode === "assign" ? "✦ 送出給學員確認" : "✦ 開放預約"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── 選定日期的課程清單 + 接下來的課程 ── */
+function DayAgenda({ sessions, selected, viewer, onOpen, emptyHint }) {
+  const today = todayStr();
+  const daySessions = sortSessions(sessions.filter(s => s.date === selected));
+  const upcoming = sortSessions(sessions.filter(s => s.date > selected && s.date >= today)).slice(0, 5);
+  return (
+    <>
+      <div className="sec-h">{relativeDayLabel(selected)}{selected !== today && relativeDayLabel(selected) === formatDateLabel(selected) ? "" : ` · ${formatDateLabel(selected)}`}</div>
+      {daySessions.length === 0
+        ? <div className="card empty" style={{ padding:"18px 12px" }}>{emptyHint || "這天沒有課程"}</div>
+        : daySessions.map(s => <SessionItem key={s.id} s={s} viewer={viewer} onOpen={onOpen} />)}
+      {upcoming.length > 0 && (
+        <>
+          <div className="sec-h">接下來</div>
+          {upcoming.map(s => <SessionItem key={s.id} s={s} viewer={viewer} onOpen={onOpen} showDate />)}
+        </>
+      )}
+    </>
+  );
+}
+
+/* ════════════════════════════════════════
    STUDENT SCREENS
 ════════════════════════════════════════ */
 const S_TABS = [
@@ -1035,8 +1578,11 @@ const S_TABS = [
 ];
 
 function SHome({ onSwitch }) {
-  const { profile, fetchRecords, fetchAssignment, fetchModules } = useAuth();
+  const { profile, fetchRecords, fetchAssignment, fetchModules, fetchSessions } = useAuth();
   const name       = profile?.name || "同學";
+  const [pendingCount, setPendingCount] = useState(0);
+  const [nextSession,  setNextSession]  = useState(null);
+  const [openCount,    setOpenCount]    = useState(0);
   const courseType = profile?.courseType || "";
   const coachName  = profile?.coachName  || "";
   const [latestFeedback, setLatestFeedback] = useState(null);
@@ -1051,6 +1597,13 @@ function SHome({ onSwitch }) {
         .sort((a,b) => (b.date||"").localeCompare(a.date||""));
       if (visible.length) setLatestFeedback(visible[0]);
     }).catch(() => {});
+    // 載入課表：待確認數量、下一堂已排定的課、可預約時段
+    fetchSessions({ studentUid: profile.uid }).then(list => {
+      const future = sortSessions(list.filter(s => !isPast(s)));
+      setPendingCount(future.filter(s => s.status === "pending").length);
+      setNextSession(future.find(s => s.status === "confirmed") || null);
+    }).catch(() => {});
+    fetchSessions({ status: "open" }).then(list => setOpenCount(list.filter(s => !isPast(s)).length)).catch(() => {});
     // 載入下一個待完成模組
     fetchAssignment(profile.uid).then(async (ids) => {
       if (!ids.length) return;
@@ -1105,10 +1658,53 @@ function SHome({ onSwitch }) {
           )}
         </div>
 
+        {/* ── 待確認課程（最優先的行動）── */}
+        {pendingCount > 0 && (
+          <button className="alert-card" onClick={() => onSwitch("courses")}
+            style={{ width:"100%", textAlign:"left", cursor:"pointer", background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)", fontFamily:"var(--font)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, color:"#8A6820" }}>你有 {pendingCount} 堂課等待確認時間</div>
+                <div style={{ fontSize:12, color:"#A07830", marginTop:3, fontStyle:"italic" }}>點此前往課表確認</div>
+              </div>
+              <span style={{ fontSize:18, color:"#8A6820" }}>→</span>
+            </div>
+          </button>
+        )}
+
+        {/* ── 下一堂課 ── */}
+        {nextSession && (
+          <>
+            <div className="sec-h">下一堂課</div>
+            <button className="sess" style={{ borderLeft:`3px solid ${getCoachModuleColor(nextSession.coachId||"").border}` }} onClick={() => onSwitch("courses")}>
+              <div className="sess-time">
+                <div style={{ fontSize:11, color:"var(--gold)", fontWeight:700, marginBottom:3 }}>{relativeDayLabel(nextSession.date)}</div>
+                <div className="sess-start">{nextSession.start}</div>
+                <div className="sess-end">{nextSession.end}</div>
+              </div>
+              <div className="sess-body">
+                <div className="sess-title">{nextSession.moduleTitle || "一對一課程"}</div>
+                <div className="sess-meta">{formatDateLabel(nextSession.date)} · 教練 {nextSession.coachName} · {nextSession.method}</div>
+                <div style={{ marginTop:6 }}><StatusPill status="confirmed" /></div>
+              </div>
+            </button>
+          </>
+        )}
+        {!nextSession && pendingCount === 0 && openCount > 0 && (
+          <button className="card" onClick={() => onSwitch("courses")}
+            style={{ width:"100%", textAlign:"left", cursor:"pointer", fontFamily:"var(--font)", display:"flex", alignItems:"center", justifyContent:"space-between", borderLeft:"3px solid var(--slate)" }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:600 }}>有 {openCount} 個時段開放預約</div>
+              <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:3, fontStyle:"italic" }}>前往課表選擇你方便的時間</div>
+            </div>
+            <span style={{ color:"var(--slate)" }}>→</span>
+          </button>
+        )}
+
         {/* ── 下一步行動（最重要的 CTA）── */}
         {nextModule ? (
           <>
-            <div className="sec-h">下一個課程</div>
+            <div className="sec-h">學習中的課程模組</div>
             <div className="card" style={{ borderLeft:"2px solid var(--gold)", cursor:"pointer" }} onClick={() => onSwitch("courses")}>
               <div style={{ fontSize:10, letterSpacing:".1em", textTransform:"uppercase", color:"var(--gold)", marginBottom:5, fontWeight:700 }}>待完成</div>
               <div style={{ fontSize:15, fontWeight:600, fontFamily:"var(--font)", marginBottom:3 }}>{nextModule.title}</div>
@@ -1178,11 +1774,42 @@ function SHome({ onSwitch }) {
 }
 
 function SCourses({ onSwitch }) {
-  const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState("all");
-  const courseType = profile?.courseType || "";
-  const coachName  = profile?.coachName  || "";
-  const joinDate   = profile?.joinDate   || "";
+  const { profile, fetchSessions, fetchAssignment, fetchModules } = useAuth();
+  const [tab,       setTab]       = useState("schedule");
+  const [mine,      setMine]      = useState([]);   // 排給我的
+  const [openSlots, setOpenSlots] = useState([]);   // 開放預約
+  const [modules,   setModules]   = useState([]);
+  const [selected,  setSelected]  = useState(todayStr());
+  const [sheet,     setSheet]     = useState(null);
+  const [toast,     setToast]     = useState("");
+  const [loading,   setLoading]   = useState(true);
+  const [refresh,   setRefresh]   = useState(0);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    setLoading(true);
+    Promise.all([
+      fetchSessions({ studentUid: profile.uid }),
+      fetchSessions({ status: "open" }),
+    ]).then(([m, o]) => {
+      setMine(m);
+      setOpenSlots(o.filter(s => !isPast(s)));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [profile?.uid, refresh]);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    fetchAssignment(profile.uid).then(async ids => {
+      if (!ids.length) { setModules([]); return; }
+      const all = await fetchModules();
+      setModules(all.filter(m => ids.includes(m.id)));
+    }).catch(() => {});
+  }, [profile?.uid]);
+
+  const pending = sortSessions(mine.filter(s => s.status === "pending" && !isPast(s)));
+  const calendarSessions = [...mine, ...openSlots];
+
   return (
     <div className="screen-enter">
       <div className="topbar">
@@ -1190,44 +1817,82 @@ function SCourses({ onSwitch }) {
         <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||""); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{(profile?.name||"?").slice(0,1)}</div>
       </div>
       <div className="inner-tabs" style={{ padding:"0 16px" }}>
-        {[["all","全部"],["ongoing","進行中"],["done","已完成"]].map(([k,l])=>(
-          <button key={k} className={"inner-tab"+(activeTab===k?" active":"")} onClick={()=>setActiveTab(k)}>{l}</button>
-        ))}
+        <button className={"inner-tab"+(tab==="schedule"?" active":"")} onClick={()=>setTab("schedule")}>
+          課表{pending.length > 0 && <span style={{ marginLeft:5, color:"var(--rust)" }}>({pending.length})</span>}
+        </button>
+        <button className={"inner-tab"+(tab==="modules"?" active":"")} onClick={()=>setTab("modules")}>我的課程模組</button>
       </div>
-      <div className="content" style={{ paddingTop:10 }}>
-        {!courseType ? (
-          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, lineHeight:1.7 }}>
-            尚未分配課程<br /><span style={{ fontSize:12 }}>請聯絡您的教練</span>
-          </div>
-        ) : (
+
+      <div className="content" style={{ paddingTop:12 }}>
+        {tab === "schedule" && (loading ? <div className="empty">載入中…</div> : (
           <>
-            {(activeTab==="all"||activeTab==="ongoing") && (
-              <div className="card-glow">
-                <div className="course-header">
-                  <span className="badge badge-teal">進行中</span>
-                  {joinDate && <span style={{ fontSize:11, color:"var(--ink-3)" }}>加入 {joinDate}</span>}
-                </div>
-                <div className="course-name" style={{ marginTop:8 }}>{courseType}</div>
-                {coachName && <div className="course-meta" style={{ marginBottom:10 }}>主要聯絡教練：{coachName}</div>}
-                <div className="prog-track" style={{ marginBottom:5 }}><div className="prog-fill" style={{ width:"0%" }}/></div>
-                <div style={{ fontSize:11, color:"var(--ink-3)", marginBottom:14 }}>課程進行中</div>
-                <div className="btn-row" style={{ marginTop:0 }}>
-                  <button className="btn btn-sm">查看課程模組</button>
-                  <button className="btn btn-primary btn-sm">聯絡教練</button>
-                </div>
-                <ResourcePanel moduleId={null} />
+            {/* 1. 待確認：最需要學員行動的事放最上面 */}
+            {pending.length > 0 && (
+              <div className="alert-card" style={{ background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)" }}>
+                <div style={{ fontSize:14, fontWeight:700, color:"#8A6820" }}>教練幫你排了 {pending.length} 堂課，請確認時間</div>
+                <div style={{ fontSize:12, color:"#A07830", marginTop:3, marginBottom:10, fontStyle:"italic" }}>點選課程，勾選「確認課程時間」即完成</div>
+                {pending.map(s => <SessionItem key={s.id} s={s} viewer="student" onOpen={setSheet} showDate />)}
               </div>
             )}
-            {activeTab==="done" && (
-              <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48 }}>尚無已完成課程</div>
+
+            {/* 2. 開放預約 */}
+            {openSlots.length > 0 && (
+              <>
+                <div className="sec-h">開放預約時段 · {openSlots.length}</div>
+                {sortSessions(openSlots).slice(0, 4).map(s => <SessionItem key={s.id} s={s} viewer="student" onOpen={setSheet} showDate />)}
+                {openSlots.length > 4 && <div style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic", margin:"-2px 0 8px" }}>更多時段可在下方月曆中查看（藍色點）</div>}
+              </>
             )}
+
+            {/* 3. 月曆 + 當日 */}
+            <div className="sec-h">月曆</div>
+            <ScheduleCalendar sessions={calendarSessions} selected={selected} onSelect={setSelected} />
+            <DayAgenda sessions={calendarSessions} selected={selected} viewer="student" onOpen={setSheet}
+              emptyHint="這天沒有排課" />
           </>
+        ))}
+
+        {tab === "modules" && (
+          modules.length === 0
+            ? <div className="empty" style={{ marginTop:24 }}>尚未分配課程模組<br/><span style={{ fontSize:12, fontStyle:"italic" }}>教練分配後會出現在這裡</span></div>
+            : modules.map(m => <StudentModuleCard key={m.id} m={m} />)
         )}
       </div>
+
+      {sheet && (
+        <SessionSheet s={sheet} viewer="student" onClose={() => setSheet(null)}
+          onChanged={(msg) => { setToast(msg); setRefresh(r => r + 1); }} />
+      )}
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={S_TABS} active="courses" onSwitch={onSwitch} />
     </div>
   );
 }
+
+function StudentModuleCard({ m }) {
+  const [open, setOpen] = useState(false);
+  const color = getCoachModuleColor(m.coachId || "");
+  return (
+    <div style={{ background:color.bg, border:`1px solid ${color.border}`, borderLeft:`3px solid ${color.border}`, borderRadius:"var(--r-lg)", marginBottom:10 }}>
+      <div style={{ padding:"12px 14px", cursor:"pointer" }} onClick={() => setOpen(o => !o)}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:color.border, fontWeight:700, marginBottom:4 }}>{m.coachName || "—"} 教練</div>
+            <div className="mod-title">{m.title}</div>
+            {m.outline && <div className="mod-outline" style={{ marginTop:4 }}>{m.outline}</div>}
+            <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:8 }}>
+              {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background:"rgba(255,255,255,.7)", color:color.border, border:`1px solid ${color.border}`, fontSize:10 }}>{s}</span>)}
+              {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>}
+            </div>
+          </div>
+          <span style={{ fontSize:12, color:"var(--ink-4)", whiteSpace:"nowrap" }}>{open ? "收合 ▲" : "學習資料 ▼"}</span>
+        </div>
+      </div>
+      {open && <div style={{ padding:"0 14px 14px" }}><ResourcePanel moduleId={m.id} /></div>}
+    </div>
+  );
+}
+
 
 function SGrowth({ onSwitch }) {
   const { profile } = useAuth();
@@ -1267,8 +1932,32 @@ function SGrowth({ onSwitch }) {
 }
 
 function SFeedback({ onSwitch }) {
-  const { profile } = useAuth();
+  const { profile, addFeedback, fetchFeedbacks, fetchRecords } = useAuth();
   const coachName = profile?.coachName || "";
+  const [text,    setText]    = useState("");
+  const [busy,    setBusy]    = useState(false);
+  const [mine,    setMine]    = useState([]);
+  const [records, setRecords] = useState([]);
+  const [toast,   setToast]   = useState("");
+
+  const load = () => {
+    if (!profile?.uid) return;
+    fetchFeedbacks(profile.uid).then(setMine).catch(() => {});
+    fetchRecords(profile.uid).then(all => setRecords(
+      all.filter(r => r.visibleStudent && r.feedback).sort((a,b) => (b.date||"").localeCompare(a.date||""))
+    )).catch(() => {});
+  };
+  useEffect(load, [profile?.uid]);
+
+  const send = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    const res = await addFeedback(text.trim());
+    setBusy(false);
+    if (res.success) { setText(""); setToast("反饋已送出，教練會看到 ✓"); load(); }
+    else setToast("送出失敗，請再試一次");
+  };
+
   return (
     <div className="screen-enter">
       <div className="topbar">
@@ -1276,41 +1965,82 @@ function SFeedback({ onSwitch }) {
         <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||""); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{(profile?.name||"?").slice(0,1)}</div>
       </div>
       <div className="content">
-        <div className="sec-h">我的教練</div>
-        <div className="card">
-          {coachName ? (
-            <div className="coach-row" style={{ borderBottom:"none" }}>
-              <div className="coach-av" style={(() => { const c = getAvatarColor(coachName); return { background: c.bg, color: c.text }; })()}>{coachName.slice(0,2)}</div>
-              <div style={{ flex:1 }}>
-                <div className="coach-name">{coachName}<span className="badge badge-gold" style={{ fontSize:10, marginLeft:6 }}>主要聯絡</span></div>
-                <div className="coach-tag">{profile?.courseType||""}</div>
+        {coachName && (
+          <>
+            <div className="sec-h">主要聯絡教練</div>
+            <div className="card" style={{ padding:"6px 16px" }}>
+              <div className="coach-row" style={{ borderBottom:"none" }}>
+                <div className="coach-av" style={(() => { const c = getAvatarColor(coachName); return { background: c.bg, color: c.text }; })()}>{coachName.slice(0,2)}</div>
+                <div style={{ flex:1 }}>
+                  <div className="coach-name">{coachName}</div>
+                  <div className="coach-tag">{profile?.courseType||""}</div>
+                </div>
               </div>
-              <button className="btn btn-sm">聯絡</button>
             </div>
-          ) : (
-            <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, padding:"14px 0" }}>尚未指定教練</div>
-          )}
-        </div>
+          </>
+        )}
+
         <div className="sec-h">填寫本週反饋</div>
-        <textarea className="input-field" rows={3} placeholder="記錄這週的學習心得、疑問或想法…" />
-        <button className="btn btn-primary" style={{ width:"100%" }}><IcSend />送出反饋</button>
+        <textarea className="input-field" rows={3} placeholder="記錄這週的學習心得、疑問或想法…" value={text} onChange={e => setText(e.target.value)} />
+        <button className="btn btn-primary" style={{ width:"100%" }} onClick={send} disabled={busy || !text.trim()}>
+          <IcSend />{busy ? "送出中…" : "送出反饋"}
+        </button>
+
+        {records.length > 0 && (
+          <>
+            <div className="sec-h">教練給你的回饋</div>
+            {records.map(r => (
+              <div key={r.id} className="card">
+                <div className="feedback-author">✦ {r.coachName} · {r.date} · {r.topic}</div>
+                <div className="feedback-quote" style={{ marginBottom:0 }}>{r.feedback}</div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {mine.length > 0 && (
+          <>
+            <div className="sec-h">我送出的反饋</div>
+            {mine.map(f => (
+              <div key={f.id} className="card card-sm">
+                <div style={{ fontSize:11, color:"var(--ink-4)", marginBottom:4 }}>{f.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || "剛剛"}</div>
+                <div style={{ fontSize:14, color:"var(--ink-2)", lineHeight:1.65, whiteSpace:"pre-wrap" }}>{f.text}</div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={S_TABS} active="feedback" onSwitch={onSwitch} />
     </div>
   );
 }
+
 
 /* ════════════════════════════════════════
    COACH SCREENS
 ════════════════════════════════════════ */
 
 function CHome({ onSwitch }) {
-  const { profile, fetchMembers, fetchModules, fetchRecords, fetchAssignment } = useAuth();
+  const { profile, fetchMembers, fetchModules, fetchRecords, fetchAssignment, fetchSessions, fetchFeedbacks } = useAuth();
+  const [upcoming,  setUpcoming]  = useState([]);   // 今天起的課程
+  const [schedCnt,  setSchedCnt]  = useState({});
+  const [feedbacks, setFeedbacks] = useState([]);
   const [students,        setStudents]        = useState([]);
   const [moduleCount,     setModuleCount]     = useState(0);
   const [unassigned,      setUnassigned]      = useState([]);  // 尚未分配課程的學員
   const [recentRecords,   setRecentRecords]   = useState([]);  // 最近 3 筆上課記錄
   const [loading,         setLoading]         = useState(true);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    fetchSessions({ coachId: profile.uid }).then(list => {
+      const future = sortSessions(list.filter(s => !isPast(s)));
+      setUpcoming(future);
+      setSchedCnt(countByStatus(future));
+    }).catch(() => {});
+    fetchFeedbacks().then(list => setFeedbacks(list.slice(0, 3))).catch(() => {});
+  }, [profile?.uid]);
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -1321,7 +2051,7 @@ function CHome({ onSwitch }) {
     ]).then(async ([members, modules, records]) => {
       const studentList = members.filter(m => m.role === "student");
       setStudents(studentList);
-      setModuleCount(modules.length);
+      setModuleCount(modules.filter(m => m.coachId === profile.uid).length);
 
       // 找出尚未有任何分配記錄的學員
       // 用 fetchAssignment 逐一查詢每位學員的分配狀況
@@ -1424,6 +2154,34 @@ function CHome({ onSwitch }) {
                 </div>
               )}
             </div>
+          </>
+        )}
+
+        {/* ── 近期課表 ── */}
+        <div className="sec-h" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span>近期課表</span>
+          <button style={{ fontSize:11, color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)", fontStyle:"italic" }} onClick={() => onSwitch("assign")}>前往排課 →</button>
+        </div>
+        {(schedCnt.reschedule > 0 || schedCnt.pending > 0) && (
+          <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+            {schedCnt.reschedule > 0 && <span className="status-pill" style={{ background:SESSION_STATUS.reschedule.bg, color:SESSION_STATUS.reschedule.color, border:`1px solid ${SESSION_STATUS.reschedule.border}` }}>{schedCnt.reschedule} 堂請求改期</span>}
+            {schedCnt.pending > 0 && <span className="status-pill" style={{ background:SESSION_STATUS.pending.bg, color:SESSION_STATUS.pending.color, border:`1px solid ${SESSION_STATUS.pending.border}` }}>{schedCnt.pending} 堂待學員確認</span>}
+          </div>
+        )}
+        {upcoming.length === 0
+          ? <button className="card empty" style={{ width:"100%", cursor:"pointer", fontFamily:"var(--font)", padding:"18px 12px" }} onClick={() => onSwitch("assign")}>近期沒有排課 · 點此開始排課</button>
+          : upcoming.slice(0, 3).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={() => onSwitch("assign")} showDate />)}
+
+        {/* ── 學員反饋 ── */}
+        {feedbacks.length > 0 && (
+          <>
+            <div className="sec-h">學員最新反饋</div>
+            {feedbacks.map(f => (
+              <div key={f.id} className="card card-sm">
+                <div style={{ fontSize:11, color:"var(--gold)", fontWeight:700, marginBottom:4 }}>{f.studentName || "學員"} · {f.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || ""}</div>
+                <div style={{ fontSize:13, color:"var(--ink-2)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>{f.text.length > 100 ? f.text.slice(0,100) + "…" : f.text}</div>
+              </div>
+            ))}
           </>
         )}
 
@@ -1654,7 +2412,7 @@ function CModules({ onSwitch, onModal }) {
 }
 
 
-function CAssign({ onSwitch }) {
+function AssignPanel() {
   const { profile, fetchMembers, fetchModules, fetchAssignment, saveAssignment } = useAuth();
   const [students,   setStudents]   = useState([]);
   const [modulePool, setModulePool] = useState([]);
@@ -1662,6 +2420,7 @@ function CAssign({ onSwitch }) {
   const [assigned,   setAssigned]   = useState([]);
   const [saving,     setSaving]     = useState(false);
   const [saved,      setSaved]      = useState(false);
+  const [otherIds,   setOtherIds]   = useState([]);   // 其他教練分配的模組，儲存時要保留
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -1677,9 +2436,10 @@ function CAssign({ onSwitch }) {
     setSelStudent(s);
     setSaved(false);
     const ids = await fetchAssignment(s.uid);
-    // 用 id 找回完整模組資料
+    // 用 id 找回完整模組資料（自己的）；其他教練分配的另外保留
     const current = modulePool.filter(m => ids.includes(m.id));
     setAssigned(current);
+    setOtherIds(ids.filter(id => !modulePool.find(m => m.id === id)));
   };
 
   const addModule = (m) => {
@@ -1695,18 +2455,13 @@ function CAssign({ onSwitch }) {
   const handleSave = async () => {
     if (!selStudent) return;
     setSaving(true);
-    const res = await saveAssignment(selStudent.uid, assigned.map(m => m.id));
+    const res = await saveAssignment(selStudent.uid, [...otherIds, ...assigned.map(m => m.id)]);
     setSaving(false);
     if (res.success) setSaved(true);
   };
 
   return (
-    <div className="screen-enter">
-      <div className="topbar">
-        <div className="topbar-title">分配課程</div>
-        {selStudent && <span className="badge badge-nebula">{selStudent.name}</span>}
-      </div>
-      <div className="content">
+      <div className="content" style={{ paddingTop:12 }}>
         {students.length === 0 ? (
           <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>
             尚無學員<br/><span style={{ fontSize:12 }}>請先在「成員管理」新增學員</span>
@@ -1746,6 +2501,7 @@ function CAssign({ onSwitch }) {
                   }
                 </div>
                 <div className="sec-h">{selStudent.name} 的專屬課程</div>
+                {otherIds.length > 0 && <div style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic", marginTop:-4, marginBottom:8 }}>另有 {otherIds.length} 個其他教練分配的模組，儲存時會保留。</div>}
                 <div className="drop-zone">
                   <div className="drop-label">↑ 點擊上方模組加入 · 點 × 移除</div>
                   <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
@@ -1781,13 +2537,122 @@ function CAssign({ onSwitch }) {
           </>
         )}
       </div>
+  );
+}
+
+function CSchedule({ onSwitch, onModal }) {
+  const { profile, fetchSessions, updateSession } = useAuth();
+  const [tab,      setTab]      = useState("calendar");
+  const [sessions, setSessions] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [refresh,  setRefresh]  = useState(0);
+  const [selected, setSelected] = useState(todayStr());
+  const [filter,   setFilter]   = useState("");     // "" | status
+  const [sheet,    setSheet]    = useState(null);
+  const [editing,  setEditing]  = useState(null);   // null | {} 新增 | session 編輯
+  const [toast,    setToast]    = useState("");
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    setLoading(true);
+    fetchSessions({ coachId: profile.uid }).then(list => { setSessions(list); setLoading(false); }).catch(() => setLoading(false));
+  }, [profile?.uid, refresh]);
+
+  const future = sessions.filter(s => !isPast(s));
+  const counts = countByStatus(future);
+  const reschedule = sortSessions(future.filter(s => s.status === "reschedule"));
+  const toRecord = sortSessions(sessions.filter(s => isPast(s) && s.status === "confirmed" && s.studentUid && !s.recorded)).reverse();
+
+  const done = (msg) => { setToast(msg); setRefresh(r => r + 1); };
+
+  const writeRecord = (s) => {
+    setSheet(null);
+    onModal("record", () => { updateSession(s.id, { recorded: true }).then(() => done("上課記錄已儲存 ✓")); }, {
+      prefill: { studentUid: s.studentUid, studentName: s.studentName, date: s.date, topic: s.moduleTitle || "一對一課程", sessionId: s.id },
+    });
+  };
+
+  return (
+    <div className="screen-enter">
+      <div className="topbar">
+        <div className="topbar-title">排課</div>
+        {tab === "calendar" && <button className="btn btn-primary btn-sm" onClick={() => setEditing({})}><IcPlus />排課</button>}
+      </div>
+      <div className="inner-tabs" style={{ padding:"0 16px" }}>
+        <button className={"inner-tab"+(tab==="calendar"?" active":"")} onClick={() => setTab("calendar")}>行事曆</button>
+        <button className={"inner-tab"+(tab==="assign"?" active":"")} onClick={() => setTab("assign")}>課程分配</button>
+      </div>
+
+      {tab === "assign" ? <AssignPanel /> : (
+        <div className="content" style={{ paddingTop:12 }}>
+          {loading ? <div className="empty">載入中…</div> : (
+            <>
+              {/* 狀態篩選：同時是統計 */}
+              <div className="filter-row">
+                <button className={"filter-chip" + (!filter ? " on" : "")} style={{ color:"var(--ink)" }} onClick={() => setFilter("")}>
+                  全部 <span className="n">{future.length}</span>
+                </button>
+                {["pending","reschedule","open","confirmed"].map(k => (
+                  <button key={k} className={"filter-chip" + (filter === k ? " on" : "")} style={{ color: SESSION_STATUS[k].color }}
+                    onClick={() => setFilter(f => f === k ? "" : k)}>
+                    {SESSION_STATUS[k].label} <span className="n" style={{ background: SESSION_STATUS[k].bg, color: SESSION_STATUS[k].color }}>{counts[k] || 0}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* 需要教練處理：改期請求、待補記錄 */}
+              {!filter && reschedule.length > 0 && (
+                <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)" }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:"var(--rust)", marginBottom:8 }}>{reschedule.length} 位學員請求改期</div>
+                  {reschedule.map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
+                </div>
+              )}
+              {!filter && toRecord.length > 0 && (
+                <div className="alert-card" style={{ background:"var(--gold-pale)", borderColor:"var(--gold-line)" }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:"var(--gold)", marginBottom:8 }}>{toRecord.length} 堂課已上完，還沒寫上課記錄</div>
+                  {toRecord.slice(0, 3).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
+                </div>
+              )}
+
+              {filter ? (
+                <>
+                  <div className="sec-h">{SESSION_STATUS[filter].label} · 即將到來</div>
+                  {sortSessions(future.filter(s => s.status === filter)).length === 0
+                    ? <div className="card empty">沒有{SESSION_STATUS[filter].label}的時段</div>
+                    : sortSessions(future.filter(s => s.status === filter)).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
+                </>
+              ) : (
+                <>
+                  <ScheduleCalendar sessions={sessions} selected={selected} onSelect={setSelected} />
+                  <DayAgenda sessions={sessions} selected={selected} viewer="coach" onOpen={setSheet}
+                    emptyHint={selected >= todayStr()
+                      ? <span>這天還沒有課程<br/><button className="btn btn-sm" style={{ marginTop:10 }} onClick={() => setEditing({})}><IcPlus />在這天排課</button></span>
+                      : "這天沒有課程"} />
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {sheet && (
+        <SessionSheet s={sheet} viewer="coach" onClose={() => setSheet(null)} onChanged={done}
+          onEdit={(s) => { setSheet(null); setEditing(s); }} onWriteRecord={writeRecord} />
+      )}
+      {editing && (
+        <ModalSession editData={editing.id ? editing : null} defaultDate={selected}
+          coachSessions={sessions}
+          onClose={(saved, msg) => { setEditing(null); if (saved) done(msg); }} />
+      )}
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={C_TABS} active="assign" onSwitch={onSwitch} />
     </div>
   );
 }
 
 function CRecords({ onSwitch, onModal }) {
-  const { fetchRecords } = useAuth();
+  const { profile, fetchRecords, deleteRecord } = useAuth();
+  const [confirmDel, setConfirmDel] = useState(null);
   const [records,    setRecords]    = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1802,6 +2667,12 @@ function CRecords({ onSwitch, onModal }) {
   }, [refreshKey]);
 
   const handleModal = () => onModal("record", () => setRefreshKey(k => k + 1));
+  const handleEdit  = (r) => onModal("record", () => setRefreshKey(k => k + 1), { editData: r });
+  const handleDelete = async (id) => {
+    await deleteRecord(id);
+    setConfirmDel(null);
+    setRefreshKey(k => k + 1);
+  };
 
   return (
     <div className="screen-enter">
@@ -1846,6 +2717,20 @@ function CRecords({ onSwitch, onModal }) {
                   {r.privateNote}
                 </div>
               )}
+              {/* 只有寫這筆記錄的教練可以編輯刪除 */}
+              {r.coachId === profile?.uid && (
+                confirmDel === r.id ? (
+                  <div className="btn-row">
+                    <button className="btn btn-sm" onClick={() => setConfirmDel(null)}>返回</button>
+                    <button className="btn btn-sm" style={{ background:"var(--rust)", color:"#fff", borderColor:"var(--rust)" }} onClick={() => handleDelete(r.id)}>確認刪除</button>
+                  </div>
+                ) : (
+                  <div className="btn-row">
+                    <button className="btn btn-sm" onClick={() => handleEdit(r)}>編輯</button>
+                    <button className="btn btn-sm" style={{ color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }} onClick={() => setConfirmDel(r.id)}>刪除</button>
+                  </div>
+                )
+              )}
             </div>
           ))
         )}
@@ -1867,7 +2752,7 @@ function CMembers({ onSwitch }) {
   const blankForm = {
     name:"", email:"", password:"", birthdate:"",
     coachName: profile?.name||"", courseType:"個人賦能班",
-    joinDate: new Date().toISOString().slice(0,10), role:"student",
+    joinDate: todayStr(), role:"student",
   };
   const [form, setForm] = useState(blankForm);
 
@@ -2157,7 +3042,7 @@ function NoAccessScreen({ user, logout }) {
 const C_TABS = [
   { key:"home",    label:"總覽", Icon:IcHome  },
   { key:"modules", label:"模組", Icon:IcLayer },
-  { key:"assign",  label:"分配", Icon:IcSwap  },
+  { key:"assign",  label:"排課", Icon:IcCal   },
   { key:"records", label:"記錄", Icon:IcDoc   },
 ];
 
@@ -2300,7 +3185,7 @@ function AMembers({ onSwitch }) {
   const [editTarget, setEditTarget] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
 
-  const blankForm = { name:"",email:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:new Date().toISOString().slice(0,10),role:"student" };
+  const blankForm = { name:"",email:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:todayStr(),role:"student" };
   const [form, setForm] = useState(blankForm);
 
   const loadMembers = () => fetchMembers().then(setMembers).catch(() => {});
@@ -2560,23 +3445,49 @@ function AReview({ onSwitch }) {
 
 
 function ARecords({ onSwitch }) {
-  const { fetchRecords } = useAuth();
+  const { fetchRecords, fetchSessions } = useAuth();
+  const [tab,      setTab]      = useState("records");
   const [records,  setRecords]  = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading,  setLoading]  = useState(true);
+  const [sheet,    setSheet]    = useState(null);
+  const [toast,    setToast]    = useState("");
+  const [refresh,  setRefresh]  = useState(0);
   useEffect(() => {
-    fetchRecords().then(all => {
-      setRecords(all.sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+    setLoading(true);
+    Promise.all([fetchRecords(), fetchSessions()]).then(([r, s]) => {
+      setRecords(r.sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+      setSessions(s);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }, [refresh]);
+  const future = sortSessions(sessions.filter(s => !isPast(s)));
+  const counts = countByStatus(future);
   return (
     <div className="screen-enter">
       <div className="topbar"><div className="topbar-title">所有記錄</div></div>
-      <div className="content">
+      <div className="inner-tabs" style={{ padding:"0 16px" }}>
+        <button className={"inner-tab"+(tab==="records"?" active":"")} onClick={() => setTab("records")}>上課記錄</button>
+        <button className={"inner-tab"+(tab==="sessions"?" active":"")} onClick={() => setTab("sessions")}>全聯盟課表</button>
+      </div>
+      <div className="content" style={{ paddingTop:12 }}>
         {loading ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48 }}>載入中…</div>
+          <div className="empty">載入中…</div>
+        ) : tab === "sessions" ? (
+          <>
+            <div className="filter-row">
+              {["pending","reschedule","open","confirmed"].map(k => (
+                <span key={k} className="filter-chip" style={{ color: SESSION_STATUS[k].color, cursor:"default" }}>
+                  {SESSION_STATUS[k].label} <span className="n" style={{ background: SESSION_STATUS[k].bg, color: SESSION_STATUS[k].color }}>{counts[k] || 0}</span>
+                </span>
+              ))}
+            </div>
+            {future.length === 0
+              ? <div className="empty">目前沒有即將到來的課程</div>
+              : future.map(s => <SessionItem key={s.id} s={s} viewer="admin" onOpen={setSheet} showDate />)}
+          </>
         ) : records.length === 0 ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>尚無上課記錄</div>
+          <div className="empty">尚無上課記錄</div>
         ) : records.map(r => (
           <div key={r.id} className="card" style={{ marginBottom:10 }}>
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8 }}>
@@ -2595,6 +3506,8 @@ function ARecords({ onSwitch }) {
           </div>
         ))}
       </div>
+      {sheet && <SessionSheet s={sheet} viewer="admin" onClose={() => setSheet(null)} onChanged={(m) => { setToast(m); setRefresh(x => x + 1); }} />}
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={A_TABS} active="records" onSwitch={onSwitch} />
     </div>
   );
@@ -2610,7 +3523,7 @@ export default function App() {
   const [aTab,  setATab]  = useState("home");
   const [modal, setModal] = useState(null);
 
-  const openModal  = (type, onSuccess) => setModal({ type, onSuccess: onSuccess || null });
+  const openModal  = (type, onSuccess, payload) => setModal({ type, onSuccess: onSuccess || null, ...(payload || {}) });
   const closeModal = (didSave) => {
     if (didSave && modal?.onSuccess) modal.onSuccess();
     setModal(null);
@@ -2637,7 +3550,7 @@ export default function App() {
     switch(cTab) {
       case "home":    return <CHome    onSwitch={setCTab} />;
       case "modules": return <CModules onSwitch={setCTab} onModal={openModal} />;
-      case "assign":  return <CAssign  onSwitch={setCTab} />;
+      case "assign":  return <CSchedule onSwitch={setCTab} onModal={openModal} />;
       case "records": return <CRecords onSwitch={setCTab} onModal={openModal} />;
       default:        return <CHome    onSwitch={setCTab} />;
     }
@@ -2652,6 +3565,20 @@ export default function App() {
       default:        return <AHome    onSwitch={setATab} />;
     }
   };
+
+  // 底部導覽紅點：學員＝待確認課程數；教練＝學員改期請求數
+  const { fetchSessions } = useAuth();
+  const [badges, setBadges] = useState({});
+  useEffect(() => {
+    if (!profile?.uid || (role !== "student" && role !== "coach")) { setBadges({}); return; }
+    const q = role === "student" ? { studentUid: profile.uid } : { coachId: profile.uid };
+    fetchSessions(q).then(list => {
+      const future = list.filter(s => !isPast(s));
+      setBadges(role === "student"
+        ? { courses: future.filter(s => s.status === "pending").length }
+        : { assign:  future.filter(s => s.status === "reschedule").length });
+    }).catch(() => {});
+  }, [profile?.uid, role, sTab, cTab, modal]);
 
   const ROLE_LABELS = { admin:"ADMIN", coach:"COACH", student:"STUDENT" };
   const ROLE_CLASS  = { admin:"admin",  coach:"coach",  student:"student" };
@@ -2722,12 +3649,14 @@ export default function App() {
           </div>
         </div>
 
-        {role === "admin"   && renderAdmin()}
-        {role === "coach"   && renderCoach()}
-        {role === "student" && renderStudent()}
+        <NavBadgeContext.Provider value={badges}>
+          {role === "admin"   && renderAdmin()}
+          {role === "coach"   && renderCoach()}
+          {role === "student" && renderStudent()}
+        </NavBadgeContext.Provider>
 
         {modal?.type === "module" && <ModalAddModule onClose={closeModal} />}
-        {modal?.type === "record" && <ModalAddRecord onClose={closeModal} />}
+        {modal?.type === "record" && <ModalAddRecord onClose={closeModal} prefill={modal.prefill} editData={modal.editData} />}
       </div>
     </>
   );

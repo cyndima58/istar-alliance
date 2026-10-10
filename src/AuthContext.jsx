@@ -9,6 +9,7 @@ import {
   doc, getDoc, setDoc, collection,
   query, where, getDocs, addDoc,
   updateDoc, deleteDoc, serverTimestamp,
+  writeBatch, runTransaction,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { initializeApp, getApps } from "firebase/app";
@@ -227,8 +228,11 @@ export function AuthProvider({ children }) {
 
   const fetchRecords = async (studentUid) => {
     try {
+      // 學員只能讀「學員可見」的記錄（配合 Firestore 規則）
       const q = studentUid
-        ? query(collection(db, "records"), where("studentUid", "==", studentUid))
+        ? (role === "student"
+            ? query(collection(db, "records"), where("studentUid", "==", studentUid), where("visibleStudent", "==", true))
+            : query(collection(db, "records"), where("studentUid", "==", studentUid)))
         : collection(db, "records");
       const snap = await getDocs(q);
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -258,6 +262,110 @@ export function AuthProvider({ children }) {
     } catch (e) { return { success: false, error: e.message }; }
   };
 
+  const deleteModuleResource = async (moduleId, resourceId) => {
+    try { await deleteDoc(doc(db, "modules", moduleId, "resources", resourceId)); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+
+  /* ════════════════════════════════════════
+     排課行事曆（sessions）
+     status：open 可預約 | pending 待確認 | confirmed 已排定 | reschedule 請求改期
+  ════════════════════════════════════════ */
+  const addSessions = async (list) => {
+    try {
+      const batch = writeBatch(db);
+      list.forEach(data => {
+        const ref = doc(collection(db, "sessions"));
+        batch.set(ref, {
+          ...data,
+          coachId:   auth.currentUser?.uid || "",
+          coachName: profile?.name || "",
+          createdAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const updateSession = async (id, data) => {
+    try { await updateDoc(doc(db, "sessions", id), { ...data, updatedAt: serverTimestamp() }); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const deleteSession = async (id) => {
+    try { await deleteDoc(doc(db, "sessions", id)); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+
+  // 依條件讀取（只用單一 where，避免需要建立 Firestore 複合索引）
+  const fetchSessions = async ({ coachId, studentUid, status } = {}) => {
+    try {
+      let q = collection(db, "sessions");
+      if (coachId)         q = query(q, where("coachId", "==", coachId));
+      else if (studentUid) q = query(q, where("studentUid", "==", studentUid));
+      else if (status)     q = query(q, where("status", "==", status));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch { return []; }
+  };
+
+  // 學員確認教練排定的時段 → 已排定
+  const confirmSession = (id) =>
+    updateSession(id, { status: "confirmed", studentNote: "", confirmedAt: serverTimestamp() });
+
+  // 學員請求改期（附原因）
+  const requestReschedule = (id, note) =>
+    updateSession(id, { status: "reschedule", studentNote: note || "" });
+
+  // 學員預約開放時段：用 transaction 防止兩人同時搶到同一時段
+  const bookOpenSession = async (id) => {
+    try {
+      await runTransaction(db, async (tx) => {
+        const ref  = doc(db, "sessions", id);
+        const snap = await tx.get(ref);
+        if (!snap.exists() || snap.data().status !== "open") throw new Error("taken");
+        tx.update(ref, {
+          status:      "confirmed",
+          studentUid:  auth.currentUser?.uid || "",
+          studentName: profile?.name || "",
+          confirmedAt: serverTimestamp(),
+          updatedAt:   serverTimestamp(),
+        });
+      });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message === "taken" ? "這個時段剛被預約走了，請選擇其他時段。" : "預約失敗，請再試一次。" };
+    }
+  };
+
+  /* ════════════════════════════════════════
+     學員反饋（feedbacks）
+  ════════════════════════════════════════ */
+  const addFeedback = async (text) => {
+    try {
+      await addDoc(collection(db, "feedbacks"), {
+        text,
+        studentUid:  auth.currentUser?.uid || "",
+        studentName: profile?.name || "",
+        createdAt:   serverTimestamp(),
+      });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const fetchFeedbacks = async (studentUid) => {
+    try {
+      const q = studentUid
+        ? query(collection(db, "feedbacks"), where("studentUid", "==", studentUid))
+        : collection(db, "feedbacks");
+      const snap = await getDocs(q);
+      return snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    } catch { return []; }
+  };
+
   const fetchModuleResources = async (moduleId) => {
     try {
       const snap = await getDocs(collection(db, "modules", moduleId, "resources"));
@@ -273,7 +381,10 @@ export function AuthProvider({ children }) {
       /* 模組 */ addModule, fetchModules, reviewModule, updateModule, deleteModule,
       /* 分配 */ saveAssignment, fetchAssignment,
       /* 記錄 */ addRecord, fetchRecords, updateRecord, deleteRecord,
-      /* 資料 */ addModuleResource, fetchModuleResources,
+      /* 資料 */ addModuleResource, fetchModuleResources, deleteModuleResource,
+      /* 排課 */ addSessions, updateSession, deleteSession, fetchSessions,
+                 confirmSession, requestReschedule, bookOpenSession,
+      /* 反饋 */ addFeedback, fetchFeedbacks,
     }}>
       {children}
     </AuthContext.Provider>
