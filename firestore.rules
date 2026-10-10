@@ -6,9 +6,11 @@ service cloud.firestore {
 
     function signedIn()       { return request.auth != null; }
     function me()             { return request.auth.uid; }
-    function myRole()         { return get(/databases/$(database)/documents/users/$(me())).data.role; }
-    function isAdmin()        { return signedIn() && myRole() == 'admin'; }
-    function isCoach()        { return signedIn() && myRole() == 'coach'; }
+    function myUser()         { return get(/databases/$(database)/documents/users/$(me())).data; }
+    // 一個帳號可以有多個身分（roles 陣列），舊帳號只有 role 欄位也相容
+    function hasRole(r)       { let u = myUser(); return u.role == r || (('roles' in u) && r in u.roles); }
+    function isAdmin()        { return signedIn() && hasRole('admin'); }
+    function isCoach()        { return signedIn() && hasRole('coach'); }
     function isCoachOrAdmin() { return isAdmin() || isCoach(); }
     function onlyChanges(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
@@ -26,9 +28,22 @@ service cloud.firestore {
       allow create: if isCoach() && request.resource.data.coachId == me();
       allow update, delete: if isAdmin() || (isCoach() && resource.data.coachId == me());
 
+      function moduleOwner() { return get(/databases/$(database)/documents/modules/$(moduleId)).data.coachId == me(); }
+
+      // 學習資料：任何登入者可新增；模組教練、管理員、上傳者本人可改名／排序／刪除
       match /resources/{resourceId} {
-        allow read, create: if signedIn();
-        allow delete: if isCoachOrAdmin() || resource.data.addedBy == get(/databases/$(database)/documents/users/$(me())).data.name;
+        allow read:   if signedIn();
+        allow create: if signedIn() && request.resource.data.addedByUid == me();
+        allow update, delete: if isAdmin() || moduleOwner()
+                              || resource.data.get('addedByUid', '') == me()
+                              || resource.data.get('addedBy', '') == myUser().name;
+
+        // 檔案內容（切塊存放）
+        match /chunks/{chunkId} {
+          allow read:   if signedIn();
+          allow create: if signedIn() && request.resource.data.addedByUid == me();
+          allow delete: if isAdmin() || moduleOwner() || resource.data.addedByUid == me();
+        }
       }
     }
 
@@ -72,6 +87,14 @@ service cloud.firestore {
                         && request.resource.data.status == 'confirmed'
                         && request.resource.data.studentUid == me()
                         && onlyChanges(['status', 'studentUid', 'studentName', 'confirmedAt', 'updatedAt']));
+    }
+
+    // ── 成長路徑：學員只能寫自己的「回報」，確認與升階只有教練／管理員能做 ──
+    match /journeys/{studentUid} {
+      allow read:   if signedIn() && (me() == studentUid || isCoachOrAdmin());
+      allow create, delete: if isCoachOrAdmin();
+      allow update: if isCoachOrAdmin()
+                    || (signedIn() && me() == studentUid && onlyChanges(['claims', 'updatedAt']));
     }
 
     // ── 學員反饋 ──

@@ -6,6 +6,11 @@ import {
   findConflicts, repeatDates, validateSession, googleCalendarUrl, countByStatus,
   parseDateStr,
 } from "./schedule";
+import {
+  STAGES, stageOf, mKey, COURSE_TYPES, milestoneState, stageStatus, stageProgress,
+  overallProgress, canAdvance, daysInStage, daysBetween, pendingClaims, funnel, stuckStudents,
+  initialJourney,
+} from "./journey";
 
 const GLOBAL_CSS = `
 :root {
@@ -518,6 +523,80 @@ select.input-field { appearance: none; cursor: pointer; }
 .detail-line .v { flex:1; color:var(--ink); line-height:1.55; word-break:break-word; }
 .empty { text-align:center; color:var(--ink-3); font-size:13px; padding:28px 12px; line-height:1.7; }
 .toast { position:absolute; left:50%; bottom:80px; transform:translateX(-50%); background:var(--ink); color:var(--cream); padding:10px 18px; border-radius:var(--r-pill); font-family:var(--font); font-size:13px; z-index:80; box-shadow:0 6px 24px rgba(28,26,23,.25); animation:fadeUp .2s var(--ease-out) both; white-space:nowrap; }
+/* ── Role switcher ── */
+.role-switch { cursor:pointer; font-family:var(--font); }
+.role-menu { position:absolute; right:0; top:calc(100% + 6px); z-index:61; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); box-shadow:0 8px 30px rgba(28,26,23,.12); min-width:150px; padding:6px; }
+.role-menu-h { font-size:10px; letter-spacing:.12em; color:var(--ink-4); padding:6px 10px 4px; font-weight:700; }
+.role-menu-item { display:flex; justify-content:space-between; width:100%; padding:9px 10px; border:none; background:none; border-radius:var(--r); font-family:var(--font); font-size:14px; color:var(--ink); cursor:pointer; }
+.role-menu-item:hover, .role-menu-item.on { background:var(--cream-2); }
+.role-menu-item.on { color:var(--gold); font-weight:600; }
+
+/* ── Module tiles & resources ── */
+.mod-tile { display:block; width:100%; text-align:left; font-family:var(--font); color:var(--ink); border:1px solid; border-left-width:3px; border-radius:var(--r-lg); padding:12px 14px; margin-bottom:10px; cursor:pointer; transition:transform .12s, box-shadow .15s; }
+.mod-tile:hover { box-shadow:0 4px 16px rgba(28,26,23,.06); }
+.mod-tile:active { transform:scale(.99); }
+.mod-mine { font-size:10px; border:1px solid; border-radius:var(--r-pill); padding:0 7px; background:rgba(255,255,255,.7); }
+.mod-clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin-top:4px; }
+.mod-foot { display:flex; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px solid rgba(28,26,23,.06); font-size:12px; color:var(--ink-3); }
+.res { margin-top:4px; }
+.res-add { background:var(--cream-2); border:1.5px dashed var(--cream-4); border-radius:var(--r-lg); padding:12px; transition:all .15s; }
+.res-add.drag { border-color:var(--gold); background:var(--gold-pale); }
+.res-row { display:flex; gap:8px; align-items:center; }
+.res-row .input-field { flex:1; }
+.res-or { display:flex; align-items:center; gap:10px; margin:10px 0; color:var(--ink-4); font-size:11px; }
+.res-or::before, .res-or::after { content:''; flex:1; height:1px; background:var(--cream-4); }
+.res-hint { font-size:11px; color:var(--ink-4); text-align:center; margin-top:8px; font-style:italic; line-height:1.5; }
+.res-msg { font-size:13px; color:var(--rust); margin:8px 2px; }
+.res-head { font-size:11px; font-weight:700; color:var(--ink-3); letter-spacing:.12em; margin:16px 2px 8px; }
+.res-empty { font-size:13px; color:var(--ink-4); text-align:center; padding:16px 0; font-style:italic; }
+.res-item { display:flex; align-items:center; gap:10px; padding:9px 10px; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r); margin-bottom:6px; }
+.res-ic { width:40px; height:40px; flex-shrink:0; border-radius:8px; border:none; background:var(--cream-2); display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; overflow:hidden; padding:0; }
+.res-ic img { width:100%; height:100%; object-fit:cover; }
+.res-name { display:block; width:100%; text-align:left; border:none; background:none; padding:0; font-family:var(--font); font-size:14px; font-weight:600; color:var(--ink); cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.res-name:hover { color:var(--gold); }
+.res-meta { font-size:11px; color:var(--ink-4); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.res-acts { display:flex; gap:2px; flex-shrink:0; }
+.res-act { min-width:28px; height:28px; padding:0 6px; border:1px solid transparent; border-radius:6px; background:none; color:var(--ink-3); font-size:14px; cursor:pointer; font-family:var(--font); }
+.res-act:hover:not(:disabled) { background:var(--cream-2); border-color:var(--cream-3); }
+.res-act:disabled { opacity:.25; cursor:default; }
+.res-act.del:hover, .res-act.armed { color:var(--rust); }
+.res-act.armed { background:var(--rust-pale); font-size:11px; font-weight:700; }
+.viewer { position:fixed; inset:0; z-index:90; background:rgba(16,15,13,.92); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
+.viewer img { max-width:100%; max-height:80vh; border-radius:8px; }
+.viewer-bar { display:flex; gap:16px; align-items:center; margin-top:14px; color:#eee; font-size:13px; font-family:var(--font); }
+.viewer-bar a { color:var(--gold-light); }
+
+/* ── Journey ── */
+.ms { padding:11px 0; border-bottom:1px solid var(--cream-3); }
+.ms:last-child { border-bottom:none; }
+.ms-head { display:flex; align-items:center; gap:10px; }
+.ms-dot { width:22px; height:22px; border-radius:50%; border:1.5px solid var(--cream-4); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:12px; color:#8A6820; }
+.ms-done .ms-dot { background:var(--sage); border-color:var(--sage); }
+.ms-claimed .ms-dot { background:#FEF3D0; border-color:#C4A05A; }
+.ms-text { font-size:14px; font-weight:500; line-height:1.4; }
+.ms-done .ms-text { color:var(--ink-2); }
+.ms-sub { font-size:11px; color:var(--ink-4); margin-top:2px; }
+.ms-claimed .ms-sub { color:#8A6820; }
+.ms-claim { margin:8px 0 0 32px; padding:8px 12px; background:var(--cream-2); border-radius:var(--r); font-size:13px; color:var(--ink-2); line-height:1.6; }
+.ms-claim a { color:var(--slate); font-size:12px; }
+.ms-form { margin:10px 0 0 32px; }
+.tl { position:relative; padding-left:34px; }
+.tl::before { content:''; position:absolute; left:13px; top:14px; bottom:14px; width:1px; background:var(--cream-3); }
+.tl-item { position:relative; margin-bottom:8px; }
+.tl-dot { position:absolute; left:-34px; top:12px; width:26px; height:26px; border-radius:50%; border:1.5px solid; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:var(--ink-3); z-index:1; }
+.tl-active .tl-dot span { color:#fff; }
+.tl-body { display:block; width:100%; text-align:left; font-family:var(--font); color:var(--ink); background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:10px 14px; cursor:pointer; }
+.tl-active .tl-body { border-color:var(--gold-line); background:var(--gold-pale); }
+.tl-locked .tl-body { opacity:.55; }
+.tl-detail { margin:6px 0 4px 4px; padding:8px 12px; background:var(--cream-2); border-radius:var(--r); }
+.grow-row { width:100%; border-left:none; border-right:none; border-top:none; background:none; cursor:pointer; font-family:var(--font); color:var(--ink); }
+.fn-row { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; }
+.fn-label { width:64px; flex-shrink:0; color:var(--ink-2); white-space:nowrap; }
+.fn-track { flex:1; height:12px; background:var(--cream-2); border-radius:6px; overflow:hidden; }
+.fn-bar { height:100%; border-radius:6px; min-width:2px; transition:width .4s var(--ease-out); }
+.fn-n { width:18px; text-align:right; font-weight:700; color:var(--ink); }
+.fn-days { width:62px; text-align:right; color:var(--ink-4); font-size:11px; }
+.fn-stuck { display:flex; justify-content:space-between; width:100%; gap:10px; padding:7px 0; border:none; border-top:1px solid rgba(138,104,32,.15); background:none; font-family:var(--font); font-size:13px; color:var(--ink-2); cursor:pointer; text-align:left; }
 .nav-badge { position:absolute; top:7px; left:calc(50% + 6px); min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--rust); color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; letter-spacing:0; }
 `;
 
@@ -572,19 +651,6 @@ function getCoachModuleColor(coachId = "") {
 /* ════════════════════════════════════════
    DATA
 ════════════════════════════════════════ */
-const GROWTH_STAGES = [
-  { num:"01", name:"探索",    tag:"入星",      sub:"定位體驗班 · 4小時",              status:"done",   dotColor:"#C5A24A", dotGlow:"rgba(197,162,74,.35)", tasks:"感受星辰聯盟氛圍，初步盤點個人能力",               output:"個人能力初步地圖（教練協助繪製）",              unlock:"完成體驗並決定進入個人賦能班",          course:"定位體驗班 · 4小時" },
-  { num:"02", name:"自我認知", tag:"認識自己",   sub:"個人賦能班 Week 1–2",            status:"done",   dotColor:"#6C5CE7", dotGlow:"rgba(108,92,231,.35)", tasks:"MBTI · 優勢盤點 · 價值觀梳理 · 過去成就回顧",  output:"個人優勢清單 + 核心價值觀 Top 3",              unlock:"完成自我盤點並獲教練確認",              course:"個人賦能班 Week 1–2" },
-  { num:"03", name:"內化",    tag:"沉澱",      sub:"教練引導對話 · 1–2週",            status:"done",   dotColor:"#6C5CE7", dotGlow:"rgba(108,92,231,.35)", tasks:"把洞察轉化成語言，第一次嘗試描述自己",               output:"個人一句話介紹初稿",                           unlock:"能在 90 秒內說完自己是誰",              course:"教練 1 對 1 引導對話" },
-  { num:"04", name:"定位",    tag:"定位",      sub:"個人賦能班 Week 3–6",            status:"active", dotColor:"#C5A24A", dotGlow:"rgba(197,162,74,.4)",  tasks:"品牌定位 · 差異化分析 · 目標受眾輪廓 · 核心訊息", output:"個人品牌一頁紙（定位宣言）",                   unlock:"定位一頁紙通過教練審核，向同儕小組分享", course:"個人賦能班 Week 3–6", pct:68 },
-  { num:"05", name:"方向",    tag:"方向",      sub:"個人賦能班 Week 7–12",           status:"future", opacity:.5, dotColor:"#6C5CE7", tasks:"商業模式設計 · 收入路徑規劃 · 90天里程碑",       output:"個人商業模式一頁紙 + 第一個 90 天計畫",          unlock:"完成 12 週，有具體行動計畫",            course:"個人賦能班 Week 7–12" },
-  { num:"06", name:"小驗",    tag:"驗證",      sub:"低風險市場驗證 · 彈性時間",         status:"future", opacity:.37, dotColor:"#0FB89A", tasks:"設計最小可行驗證行動，執行並觀察市場反應",             output:"驗證報告：什麼最有共鳴、哪裡需要調整",           unlock:"完成至少一次真實的市場驗證並整理回饋",   course:"演講 / 文章 / 諮詢 / 免費工作坊（擇一）" },
-  { num:"07", name:"實作",    tag:"實作",      sub:"創業預備班 Phase 1–2",           status:"future", opacity:.27, dotColor:"#E0614E", tasks:"系統化產品 / 服務設計，建立穩定的交付流程",           output:"可重複銷售的產品原型 + 第一張訂單",              unlock:"完成第一筆付費成交",                    course:"創業預備班 Phase 1–2" },
-  { num:"08", name:"市場",    tag:"市場",      sub:"創業預備班 Phase 3–4",           status:"future", opacity:.2,  dotColor:"#E0614E", tasks:"流量策略 · 客戶旅程設計 · 銷售系統建立",             output:"穩定的月收入來源 + 可複製的獲客流程",            unlock:"達到可持續的月收入目標",                 course:"創業預備班 Phase 3–4" },
-  { num:"09", name:"共創",    tag:"✦ 星辰成員", sub:"創業預備班 Phase 5–6 → 聯盟成員", status:"future", opacity:.14, dotColor:"#C5A24A", dotGlow:"rgba(197,162,74,.5)", tasks:"事業系統化 · 與聯盟夥伴協作 · 股權共創結構", output:"成立公司 + 與 iSTAR Alliance 完成股權綁定", unlock:"完成股權綁定，正式成為 iSTAR Alliance 成員", course:"創業預備班 Phase 5–6 + 聯盟導師陪跑" },
-];
-const STAGE_SEGS = ["done","done","done","current","future","future","future","future","future"];
-const COURSE_TYPES = ["定位體驗班","個人賦能班","創業預備班"];
 
 /* ════════════════════════════════════════
    SHARED COMPONENTS
@@ -662,247 +728,6 @@ function BottomNav({ tabs, active, onSwitch }) {
 /* Toggle 已整合為 inline toggle-row */
 
 /* ── Resource Upload Panel ── */
-function ResourcePanel({ moduleId }) {
-  const { role: userRole, profile, addModuleResource, fetchModuleResources, deleteModuleResource } = useAuth();
-  const [tab,       setTab]     = useState("link");
-  const [linkVal,   setLink]    = useState("");
-  const [linkName,  setName]    = useState("");
-  const [resources, setRes]     = useState([]);
-  const [saving,    setSaving]  = useState(false);
-
-  useEffect(() => {
-    if (moduleId) {
-      fetchModuleResources(moduleId).then(list => {
-        setRes(list.map(r => ({
-          type: r.type || "link",
-          name: r.name || r.url,
-          url:  r.url  || "",
-          size: r.size || "",
-          by:   r.addedRole || userRole,
-          byName: r.addedBy || "",
-          ts:   r.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || "—",
-          id:   r.id,
-        })));
-      }).catch(() => {});
-    }
-  }, [moduleId]);
-
-  const addLink = async () => {
-    if (!linkVal.trim()) return;
-    const url  = linkVal.trim().startsWith("http") ? linkVal.trim() : "https://" + linkVal.trim();
-    const name = linkName.trim() || url;
-    setSaving(true);
-    if (moduleId) {
-      await addModuleResource(moduleId, { type:"link", name, url });
-      // 重新載入以取得 Firestore id（才能刪除）
-      const list = await fetchModuleResources(moduleId);
-      setRes(list.map(r => ({ type:r.type||"link", name:r.name||r.url, url:r.url||"", size:r.size||"", by:r.addedRole||"", byName:r.addedBy||"", ts:r.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || "剛剛", id:r.id })));
-    } else {
-      setRes(r => [...r, { type:"link", name, url, by: userRole, byName: profile?.name || "", ts: new Date().toLocaleDateString("zh-TW") }]);
-    }
-    setLink(""); setName(""); setSaving(false);
-  };
-
-  const handleFile = e => {
-    const files = Array.from(e.target.files || []);
-    files.forEach(f => {
-      const isImg = f.type.startsWith("image/");
-      setRes(r => [...r, {
-        type: isImg ? "img" : "file",
-        name: f.name,
-        size: (f.size/1024).toFixed(0) + "KB",
-        by:   userRole,
-        ts:   new Date().toLocaleDateString("zh-TW"),
-      }]);
-    });
-    e.target.value = "";
-  };
-
-  return (
-    <div className="resource-panel">
-      <div className="resource-panel-title">課程學習資料</div>
-      <div className="resource-tabs">
-        {[["link","🔗 連結"],["file","📎 檔案"],["img","🖼 圖片"]].map(([k,l]) => (
-          <button key={k} className={"resource-tab"+(tab===k?" active":"")} onClick={() => setTab(k)}>{l}</button>
-        ))}
-      </div>
-
-      {tab === "link" && (
-        <>
-          <div className="input-label">說明名稱（選填）</div>
-          <input className="input-field" placeholder="例：本週參考文章"
-            value={linkName} onChange={e => setName(e.target.value)}
-            style={{ marginBottom:6 }} />
-          <div className="input-label">網址連結</div>
-          <input className="input-field" placeholder="https://..."
-            value={linkVal} onChange={e => setLink(e.target.value)}
-            style={{ marginBottom:6 }} />
-          <button className="btn btn-primary" style={{ width:"100%", justifyContent:"center" }}
-            onClick={addLink} disabled={saving}>
-            <IcPlus />{saving ? "儲存中…" : "加入連結"}
-          </button>
-        </>
-      )}
-
-      {(tab === "file" || tab === "img") && (
-        <>
-          <label style={{ display:"block", width:"100%", cursor:"pointer" }}>
-            <div style={{ border:"1.5px dashed var(--cream-4)", borderRadius:"var(--r)", padding:"20px 12px", textAlign:"center", background:"var(--cream-3)" }}>
-              <div style={{ fontSize:22, marginBottom:6 }}>{tab==="img" ? "🖼" : "📎"}</div>
-              <div style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>點此上傳{tab==="img" ? "圖片" : "檔案"}</div>
-              <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:4 }}>
-                {tab==="img" ? "支援 JPG、PNG、GIF、WEBP" : "支援 PDF、DOC、XLS、PPT 等"}
-              </div>
-            </div>
-            <input type="file" style={{ display:"none" }}
-              accept={tab==="img" ? "image/*" : ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"}
-              multiple onChange={handleFile} />
-          </label>
-          <div className="upload-hint">⚠ 檔案上傳需整合 Firebase Storage（即將支援）</div>
-        </>
-      )}
-
-      {resources.length > 0 && (
-        <div className="resource-list" style={{ marginTop:12 }}>
-          {resources.map((r, i) => (
-            <div key={r.id || i} className="resource-item">
-              <div className={"resource-icon " + r.type}>
-                {r.type==="link" ? <IcLink /> : r.type==="img" ? <IcImg /> : <IcFile />}
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div className="resource-name" style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                  {r.type==="link"
-                    ? <a href={r.url} target="_blank" rel="noopener noreferrer"
-                        style={{ color:"var(--ink)", textDecoration:"underline", textDecorationColor:"var(--gold)" }}>
-                        {r.name}
-                      </a>
-                    : r.name
-                  }
-                </div>
-                <div className="resource-meta">
-                  {r.size ? r.size + " · " : ""}{r.byName ? r.byName + " · " : ""}{r.by === "coach" ? "教練" : r.by === "admin" ? "管理員" : "學員"}上傳 · {r.ts}
-                </div>
-              </div>
-              {(!r.id || userRole !== "student" || r.byName === profile?.name) && (
-              <button onClick={async () => {
-                  if (r.id && moduleId) await deleteModuleResource(moduleId, r.id);
-                  setRes(res => res.filter((_,j) => j!==i));
-                }}
-                style={{ border:"none", background:"none", color:"var(--ink-4)", cursor:"pointer", fontSize:18, padding:"0 2px", lineHeight:1 }}>
-                ×
-              </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {resources.length === 0 && (
-        <div className="resource-empty">
-          尚無學習資料<br />
-          <span style={{ fontSize:11 }}>教練與學員都可以在這裡上傳連結或資料</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── GrowthItem ── */
-function GrowthItem({ s }) {
-  const [open, setOpen] = useState(false);
-  const isCoCreate = s.num === "09";
-  const dotStyle = {
-    display:"flex", alignItems:"center", justifyContent:"center",
-    ...(s.status==="done"
-      ? { background:s.dotColor, borderColor:s.dotColor, boxShadow:`0 0 8px ${s.dotGlow||"transparent"}` }
-      : s.status==="active"
-      ? { background:"var(--cream)", borderColor:s.dotColor, borderWidth:2, boxShadow:`0 0 0 3px ${s.dotGlow||"transparent"},0 0 12px ${s.dotColor}` }
-      : { background:"var(--cream-2)", borderColor:"var(--ink-3)" }),
-  };
-  const cardExtra = s.status==="active"
-    ? { borderColor: open?"rgba(197,162,74,.55)":"rgba(197,162,74,.28)", background:"rgba(197,162,74,.04)" }
-    : s.status==="done"
-    ? { borderColor: open?"rgba(15,184,154,.35)":"rgba(255,255,255,.055)" }
-    : { borderColor:"rgba(255,255,255,.055)" };
-
-  return (
-    <div className="journey-item" style={s.opacity!=null?{opacity:s.opacity}:{}}>
-      <div className="journey-dot" style={dotStyle}>
-        {s.status==="done"   && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
-        {s.status==="active" && <div style={{ width:6, height:6, borderRadius:"50%", background:s.dotColor }} />}
-        {s.status==="future" && <span style={{ fontSize:8, color:"var(--ink-3)", fontWeight:700 }}>{s.num}</span>}
-      </div>
-      <div
-        className={"card"+(s.status==="done"?" card-sm":"")}
-        style={{ ...cardExtra, cursor:s.status!=="future"?"pointer":"default" }}
-        onClick={s.status!=="future"?()=>setOpen(o=>!o):undefined}
-      >
-        {s.status==="done" && (
-          <>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-              <div>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", color:"var(--sage)", marginBottom:3, textTransform:"uppercase" }}>{s.tag}</div>
-                <div className="j-title">{s.num}. {s.name}</div>
-                <div className="j-sub">{s.sub}</div>
-              </div>
-              <span className="badge badge-teal" style={{ flexShrink:0, marginLeft:8 }}>✓ 完成</span>
-            </div>
-            {open && (
-              <div style={{ paddingTop:10, borderTop:"1px solid rgba(255,255,255,.05)", marginTop:4 }}>
-                <div className="detail-meta-row"><span className="detail-meta-lbl">核心任務</span><span className="detail-meta-val">{s.tasks}</span></div>
-                <div className="detail-meta-row"><span className="detail-meta-lbl">關鍵產出</span><span className="detail-meta-val">{s.output}</span></div>
-                <div className="detail-meta-row" style={{ border:"none" }}><span className="detail-meta-lbl">對應課程</span><span className="detail-meta-val">{s.course}</span></div>
-              </div>
-            )}
-          </>
-        )}
-        {s.status==="active" && (
-          <>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-              <div>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", color:"var(--gold)", marginBottom:3, textTransform:"uppercase" }}>{s.tag} · 當前階段 ▶</div>
-                <div className="j-title active-stage">{s.num}. {s.name}</div>
-                <div className="j-sub">{s.sub}</div>
-              </div>
-              <span className="badge badge-gold" style={{ flexShrink:0, marginLeft:8 }}>{s.pct}%</span>
-            </div>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
-              <span style={{ fontSize:11, color:"var(--ink-3)" }}>完成進度</span>
-              <span style={{ fontSize:11, color:"var(--gold)" }}>{s.pct}%</span>
-            </div>
-            <div className="prog-track" style={{ marginBottom:10 }}><div className="prog-fill gold" style={{ width:`${s.pct}%` }} /></div>
-            {open && (
-              <div style={{ paddingTop:10, borderTop:"1px solid rgba(197,162,74,.18)", marginTop:4 }}>
-                <div className="detail-meta-row"><span className="detail-meta-lbl">核心任務</span><span className="detail-meta-val">{s.tasks}</span></div>
-                <div className="detail-meta-row"><span className="detail-meta-lbl">關鍵產出</span><span className="detail-meta-val">{s.output}</span></div>
-                <div className="detail-meta-row"><span className="detail-meta-lbl">對應課程</span><span className="detail-meta-val">{s.course}</span></div>
-                <div className="detail-meta-row" style={{ border:"none" }}><span className="detail-meta-lbl">升階條件</span><span className="detail-meta-val" style={{ color:"var(--gold)" }}>{s.unlock}</span></div>
-              </div>
-            )}
-          </>
-        )}
-        {s.status==="future" && (
-          <>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", color:isCoCreate?"rgba(197,162,74,.45)":"var(--ink-3)", marginBottom:3, textTransform:"uppercase" }}>{s.tag}</div>
-                <div className="j-title" style={isCoCreate?{color:"rgba(197,162,74,.45)"}:{}}>{s.num}. {s.name}</div>
-                <div className="j-sub">{s.sub}</div>
-              </div>
-              <IcLock />
-            </div>
-            {isCoCreate && (
-              <div style={{ marginTop:10, padding:"8px 12px", background:"rgba(197,162,74,.05)", borderRadius:"var(--r)", border:"1px solid rgba(197,162,74,.12)", fontSize:12, color:"rgba(197,162,74,.45)", lineHeight:1.6 }}>
-                ✦ 完成創業預備班並通過審核，即正式成為星辰聯盟成員
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ════════════════════════════════════════
    MODALS
 ════════════════════════════════════════ */
@@ -931,7 +756,7 @@ function ModalAddModule({ onClose, editData }) {
     const payload = { title:form.title.trim(), outline:form.outline.trim(), duration:form.duration.trim(), method:form.method, stage:form.stage };
     const res = isEdit ? await updateModule(editData.id, payload) : await addModule(payload);
     setLoading(false);
-    if (res.success) onClose(true);
+    if (res.success) onClose(true, { id: res.id || editData?.id });
     else setError("儲存失敗，請再試一次。");
   };
 
@@ -1102,6 +927,608 @@ function ModalAddRecord({ onClose, prefill, editData }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ════════════════════════════════════════
+   課程學習資料：檔案處理工具
+════════════════════════════════════════ */
+const MAX_FILE = 5 * 1024 * 1024;   // 5MB（存在 Firestore，免費方案可用）
+
+const formatSize = (b) => !b ? "" : b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
+
+const readAsDataUrl = (file) => new Promise((res, rej) => {
+  const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file);
+});
+
+// 圖片：縮到最長邊 1600px、JPEG 壓縮，另產生 240px 縮圖
+const loadImage = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+async function compressImage(file) {
+  const src = await readAsDataUrl(file);
+  const im = await loadImage(src);
+  const draw = (max, q) => {
+    const k = Math.min(1, max / Math.max(im.width, im.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(im, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", q);
+  };
+  const dataUrl = draw(1600, 0.82);
+  return { dataUrl, thumb: draw(240, 0.7), size: Math.round((dataUrl.length - dataUrl.indexOf(",") - 1) * 0.75) };
+}
+
+const dataUrlToBlobUrl = (dataUrl) => {
+  const [head, b64] = dataUrl.split(",");
+  const mime = head.match(/data:(.*?);/)?.[1] || "application/octet-stream";
+  const bin = atob(b64); const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([arr], { type: mime }));
+};
+
+const normalizeUrl = (v) => {
+  const t = (v || "").trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(t)) return "https://" + t;
+  return "";
+};
+const linkLabel = (url) => {
+  try {
+    const u = new URL(url); const h = u.hostname.replace(/^www\./, "");
+    if (/youtube\.com|youtu\.be/.test(h)) return "YouTube 影片";
+    if (/docs\.google\.com/.test(h)) return u.pathname.includes("/presentation") ? "Google 簡報" : u.pathname.includes("/spreadsheets") ? "Google 試算表" : "Google 文件";
+    if (/drive\.google\.com/.test(h)) return "Google 雲端硬碟";
+    if (/canva\.com/.test(h)) return "Canva 設計";
+    if (/notion\.(so|site)/.test(h)) return "Notion 頁面";
+    return h;
+  } catch { return url; }
+};
+const FILE_ICON = (r) => r.type === "link" ? "🔗" : r.type === "img" ? "🖼" : /pdf/.test(r.mime || "") ? "📕" : /sheet|excel|csv/.test(r.mime || "") ? "📊" : /presentation|powerpoint/.test(r.mime || "") ? "📙" : /word|document/.test(r.mime || "") ? "📘" : "📎";
+
+/* ── 學習資料管理（教練＝完整管理；學員＝可新增、可刪自己的） ── */
+function ResourceManager({ moduleId, canManage, canAdd = true }) {
+  const { profile, role, addModuleResource, fetchModuleResources, deleteModuleResource,
+          uploadModuleFile, fetchResourceFile, updateModuleResource } = useAuth();
+  const [items,    setItems]    = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [url,      setUrl]      = useState("");
+  const [title,    setTitle]    = useState("");
+  const [queue,    setQueue]    = useState([]);     // { id, name, pct, error }
+  const [editing,  setEditing]  = useState(null);   // { id, name }
+  const [armedDel, setArmedDel] = useState(null);
+  const [viewer,   setViewer]   = useState(null);   // { name, src }
+  const [opening,  setOpening]  = useState(null);
+  const [drag,     setDrag]     = useState(false);
+  const [msg,      setMsg]      = useState("");
+  const fileRef = useRef(null);
+
+  const load = () => fetchModuleResources(moduleId).then(list => { setItems(list); setLoading(false); });
+  useEffect(() => { setLoading(true); load(); }, [moduleId]);
+
+  const mine = (r) => r.addedByUid ? r.addedByUid === profile?.uid : r.addedBy === profile?.name;
+  const canEdit = (r) => canManage || mine(r);
+
+  /* 連結 */
+  const validUrl = normalizeUrl(url);
+  const addLink = async () => {
+    if (!validUrl) { setMsg("請貼上完整的網址，例如 https://…"); return; }
+    setMsg("");
+    const res = await addModuleResource(moduleId, { type: "link", url: validUrl, name: title.trim() || linkLabel(validUrl) });
+    if (res.success) { setUrl(""); setTitle(""); load(); } else setMsg("加入失敗，請再試一次");
+  };
+
+  /* 檔案 / 圖片（可多選、拖放、貼上） */
+  const handleFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setMsg("");
+    for (const f of files) {
+      const qid = Math.random().toString(36).slice(2);
+      setQueue(q => [...q, { id: qid, name: f.name, pct: 0 }]);
+      const setQ = (patch) => setQueue(q => q.map(x => x.id === qid ? { ...x, ...patch } : x));
+      try {
+        const isImg = /^image\/(jpeg|png|webp|gif|heic|heif|bmp)/.test(f.type);
+        let payload;
+        if (isImg) {
+          const c = await compressImage(f);
+          payload = { kind: "img", name: f.name.replace(/\.\w+$/, "") + ".jpg", mime: "image/jpeg", size: c.size, dataUrl: c.dataUrl, thumb: c.thumb };
+        } else {
+          if (f.size > MAX_FILE) { setQ({ error: `超過 5MB（${formatSize(f.size)}），請改用雲端硬碟連結` }); continue; }
+          payload = { kind: "file", name: f.name, mime: f.type || "application/octet-stream", size: f.size, dataUrl: await readAsDataUrl(f) };
+        }
+        const res = await uploadModuleFile(moduleId, payload, (p) => setQ({ pct: Math.round(p * 100) }));
+        if (!res.success) { setQ({ error: "上傳失敗，請再試一次" }); continue; }
+        setQueue(q => q.filter(x => x.id !== qid));
+        load();
+      } catch { setQ({ error: "無法讀取這個檔案" }); }
+    }
+  };
+
+  const onPaste = (e) => {
+    const files = Array.from(e.clipboardData?.files || []);
+    if (files.length) { e.preventDefault(); handleFiles(files); }
+  };
+
+  /* 開啟 */
+  const open = async (r) => {
+    if (r.type === "link") { window.open(r.url, "_blank", "noopener"); return; }
+    setOpening(r.id);
+    try {
+      const dataUrl = await fetchResourceFile(moduleId, r);
+      if (r.type === "img") setViewer({ name: r.name, src: dataUrl });
+      else {
+        // 不加 target="_blank"：否則瀏覽器會忽略檔名，存成亂碼檔名
+        const href = dataUrlToBlobUrl(dataUrl);
+        const a = document.createElement("a");
+        a.href = href; a.download = r.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 60000);
+      }
+    } catch { setMsg("開啟失敗，請再試一次"); }
+    setOpening(null);
+  };
+
+  /* 重新命名 / 排序 / 刪除 */
+  const saveName = async () => {
+    if (!editing?.name.trim()) { setEditing(null); return; }
+    await updateModuleResource(moduleId, editing.id, { name: editing.name.trim() });
+    setEditing(null); load();
+  };
+  const move = async (idx, dir) => {
+    const a = items[idx], b = items[idx + dir];
+    if (!a || !b) return;
+    const oa = a.order ?? idx, ob = b.order ?? idx + dir;
+    setItems(list => { const n = [...list]; [n[idx], n[idx + dir]] = [n[idx + dir], n[idx]]; return n; });
+    await Promise.all([updateModuleResource(moduleId, a.id, { order: ob === oa ? oa + dir : ob }), updateModuleResource(moduleId, b.id, { order: oa })]);
+    load();
+  };
+  const remove = async (r) => {
+    if (armedDel !== r.id) { setArmedDel(r.id); setTimeout(() => setArmedDel(d => d === r.id ? null : d), 3000); return; }
+    setArmedDel(null);
+    setItems(list => list.filter(x => x.id !== r.id));
+    await deleteModuleResource(moduleId, r.id, r.parts || 0);
+    load();
+  };
+
+  return (
+    <div className="res" onPaste={canAdd ? onPaste : undefined}
+      onDragOver={canAdd ? (e => { e.preventDefault(); setDrag(true); }) : undefined}
+      onDragLeave={() => setDrag(false)}
+      onDrop={canAdd ? (e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files); }) : undefined}>
+
+      {/* ── 新增區 ── */}
+      {canAdd && <div className={"res-add" + (drag ? " drag" : "")}>
+        <div className="res-row">
+          <input className="input-field" style={{ marginBottom:0 }} placeholder="貼上連結（YouTube、雲端硬碟、文章…）"
+            value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => e.key === "Enter" && addLink()} />
+          <button className="btn btn-primary" onClick={addLink} disabled={!url.trim()}>加入</button>
+        </div>
+        {validUrl && (
+          <input className="input-field" style={{ marginTop:8, marginBottom:0 }} placeholder={`顯示名稱（預設：${linkLabel(validUrl)}）`}
+            value={title} onChange={e => setTitle(e.target.value)} onKeyDown={e => e.key === "Enter" && addLink()} />
+        )}
+        <div className="res-or"><span>或</span></div>
+        <button className="btn" style={{ width:"100%" }} onClick={() => fileRef.current?.click()}>
+          📎 上傳檔案或圖片
+        </button>
+        <div className="res-hint">可一次選多個 · 可直接拖放或貼上截圖 · 圖片自動壓縮 · 檔案上限 5MB</div>
+        <input ref={fileRef} type="file" multiple style={{ display:"none" }}
+          onChange={e => { handleFiles(e.target.files); e.target.value = ""; }} />
+      </div>}
+
+      {msg && <div className="res-msg">{msg}</div>}
+
+      {/* ── 上傳中 ── */}
+      {queue.map(q => (
+        <div key={q.id} className="res-item">
+          <div className="res-ic">{q.error ? "⚠" : "⏳"}</div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div className="res-name">{q.name}</div>
+            {q.error
+              ? <div className="res-meta" style={{ color:"var(--rust)" }}>{q.error}</div>
+              : <div className="prog-track" style={{ marginTop:6 }}><div className="prog-fill gold" style={{ width:`${q.pct}%` }} /></div>}
+          </div>
+          {q.error && <button className="res-act" onClick={() => setQueue(x => x.filter(y => y.id !== q.id))}>×</button>}
+        </div>
+      ))}
+
+      {/* ── 清單 ── */}
+      <div className="res-head">學習資料 {items.length > 0 && `· ${items.length}`}</div>
+      {loading ? <div className="res-empty">載入中…</div>
+        : items.length === 0 && queue.length === 0 ? <div className="res-empty">還沒有資料，從上方加入第一份吧</div>
+        : items.map((r, idx) => (
+          <div key={r.id} className="res-item">
+            <button className="res-ic" onClick={() => open(r)} aria-label="開啟">
+              {r.thumb ? <img src={r.thumb} alt="" /> : FILE_ICON(r)}
+            </button>
+            <div style={{ flex:1, minWidth:0 }}>
+              {editing?.id === r.id ? (
+                <input className="input-field" style={{ marginBottom:0, padding:"6px 10px", fontSize:14 }} autoFocus
+                  value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })}
+                  onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditing(null); }}
+                  onBlur={saveName} />
+              ) : (
+                <button className="res-name" onClick={() => open(r)}>
+                  {opening === r.id ? "開啟中…" : r.name || r.url}
+                </button>
+              )}
+              <div className="res-meta">
+                {r.type === "link" ? linkLabel(r.url) : formatSize(r.size)}
+                {r.addedBy ? ` · ${r.addedBy}` : ""}
+                {r.createdAt?.toDate ? ` · ${r.createdAt.toDate().toLocaleDateString("zh-TW")}` : ""}
+              </div>
+            </div>
+            {canEdit(r) && editing?.id !== r.id && (
+              <div className="res-acts">
+                {canManage && <button className="res-act" disabled={idx === 0} onClick={() => move(idx, -1)} aria-label="上移">↑</button>}
+                {canManage && <button className="res-act" disabled={idx === items.length - 1} onClick={() => move(idx, 1)} aria-label="下移">↓</button>}
+                <button className="res-act" onClick={() => setEditing({ id: r.id, name: r.name || "" })} aria-label="重新命名">✎</button>
+                <button className={"res-act del" + (armedDel === r.id ? " armed" : "")} onClick={() => remove(r)} aria-label="刪除">
+                  {armedDel === r.id ? "確定?" : "×"}
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+
+      {viewer && (
+        <div className="viewer" onClick={() => setViewer(null)}>
+          <img src={viewer.src} alt={viewer.name} />
+          <div className="viewer-bar">
+            <span>{viewer.name}</span>
+            <a href={viewer.src} download={viewer.name} onClick={e => e.stopPropagation()}>下載</a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 課程模組詳情（點模組卡片開啟） ── */
+function ModuleSheet({ m, isOwn, onClose, onEdit, onDelete }) {
+  const { role } = useAuth();
+  const color = getCoachModuleColor(m.coachId || "");
+  const [confirmDel, setConfirmDel] = useState(false);
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-sheet" style={{ maxHeight:"94%" }}>
+        <div className="modal-handle" />
+        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+          <span className="cal-dot" style={{ background: color.border, width:8, height:8 }} />
+          <span style={{ fontSize:12, color: color.border, fontWeight:700 }}>{m.coachName || "—"} 教練{isOwn ? " · 我的課程" : ""}</span>
+        </div>
+        <div className="modal-title" style={{ marginBottom:8 }}>{m.title}</div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
+          {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background: color.bg, color: color.border, border:`1px solid ${color.border}`, fontSize:11 }}>{s}</span>)}
+          {m.duration && <span className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:11 }}>⏱ {m.duration}</span>}
+          {(m.method||[]).map(mt => <span key={mt} className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:11 }}>{mt}</span>)}
+        </div>
+        {m.outline && <div style={{ fontSize:14, color:"var(--ink-2)", lineHeight:1.7, whiteSpace:"pre-wrap", marginBottom:12 }}>{m.outline}</div>}
+
+        {isOwn && !confirmDel && (
+          <div className="btn-row" style={{ marginTop:0, marginBottom:14 }}>
+            <button className="btn btn-sm" onClick={() => onEdit(m)}>✎ 編輯課程資訊</button>
+            <button className="btn btn-sm" style={{ color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }} onClick={() => setConfirmDel(true)}>刪除模組</button>
+          </div>
+        )}
+        {confirmDel && (
+          <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)" }}>
+            <div style={{ fontSize:14, marginBottom:10 }}>確定刪除「{m.title}」嗎？已分配給學員的會一併失效。</div>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn btn-sm" onClick={() => setConfirmDel(false)}>返回</button>
+              <button className="btn btn-sm" style={{ background:"var(--rust)", color:"#fff", borderColor:"var(--rust)" }} onClick={() => onDelete(m.id)}>確認刪除</button>
+            </div>
+          </div>
+        )}
+
+        <ResourceManager moduleId={m.id} canManage={isOwn || role === "admin"} canAdd={isOwn || role === "admin"} />
+        {!isOwn && role !== "admin" && <div style={{ fontSize:12, color:"var(--ink-4)", textAlign:"center", marginTop:6, fontStyle:"italic" }}>其他教練的課程僅可檢視</div>}
+        <button className="btn" style={{ width:"100%", marginTop:12, border:"none", background:"none", color:"var(--ink-3)" }} onClick={onClose}>關閉</button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════
+   成長路徑：共用元件
+════════════════════════════════════════ */
+function StageBar({ journey }) {
+  return (
+    <div className="stage-bar">
+      {STAGES.map(s => {
+        const st = stageStatus(journey, s.n);
+        return <div key={s.n} className="stage-seg" style={{
+          background: st === "done" ? s.color : st === "active" ? "var(--ink)" : "var(--cream-3)",
+          opacity: st === "done" ? .85 : 1 }} />;
+      })}
+    </div>
+  );
+}
+
+/* 單一里程碑列 */
+function MilestoneRow({ journey, n, i, mode, studentUid, onChanged }) {
+  const { claimMilestone, unclaimMilestone, verifyMilestone } = useAuth();
+  const st = milestoneState(journey, n, i);
+  const k = mKey(n, i);
+  const claim = journey?.claims?.[k];
+  const ver = journey?.verified?.[k];
+  const skipped = journey?.stages?.[n]?.skipped;
+  const [form, setForm] = useState(false);
+  const [note, setNote] = useState("");
+  const [link, setLink] = useState("");
+  const [busy, setBusy] = useState(false);
+  const active = stageStatus(journey, n) === "active";
+  const run = async (fn, msg) => { setBusy(true); const r = await fn(); setBusy(false); if (r.success) { setForm(false); onChanged(msg); } else onChanged("操作失敗，請再試一次"); };
+
+  return (
+    <div className={"ms ms-" + st}>
+      <div className="ms-head">
+        <span className="ms-dot">{st === "done" ? <IcCheck /> : st === "claimed" ? "…" : ""}</span>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div className="ms-text">{stageOf(n).milestones[i]}</div>
+          <div className="ms-sub">
+            {st === "done" && (skipped && !ver ? "已具備" : `${ver?.by || "教練"} 確認 · ${ver?.at || ""}`)}
+            {st === "claimed" && `已回報 ${claim.at} · 等待教練確認`}
+          </div>
+        </div>
+        {/* 學員：回報 / 撤回 */}
+        {mode === "student" && active && st === "todo" && !form && (
+          <button className="btn btn-sm" onClick={() => setForm(true)}>回報完成</button>
+        )}
+        {mode === "student" && active && st === "claimed" && (
+          <button className="btn btn-sm" style={{ color:"var(--ink-3)" }} disabled={busy} onClick={() => run(() => unclaimMilestone(n, i), "已撤回回報")}>撤回</button>
+        )}
+        {/* 教練：確認 / 取消 */}
+        {mode === "coach" && !skipped && st !== "done" && (
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => run(() => verifyMilestone(studentUid, n, i, true), "已確認里程碑 ✓")}>確認</button>
+        )}
+        {mode === "coach" && !skipped && st === "done" && active && (
+          <button className="btn btn-sm" style={{ color:"var(--ink-3)" }} disabled={busy} onClick={() => run(() => verifyMilestone(studentUid, n, i, false), "已取消確認")}>取消</button>
+        )}
+      </div>
+      {claim && (claim.note || claim.link) && (
+        <div className="ms-claim">
+          {claim.note && <div style={{ whiteSpace:"pre-wrap" }}>{claim.note}</div>}
+          {claim.link && <a href={claim.link} target="_blank" rel="noopener noreferrer">查看成果 →</a>}
+        </div>
+      )}
+      {form && (
+        <div className="ms-form">
+          <textarea className="input-field" rows={2} placeholder="簡單說明你完成了什麼（教練會看到）" value={note} onChange={e => setNote(e.target.value)} />
+          <input className="input-field" placeholder="成果連結（選填，例如雲端文件）" value={link} onChange={e => setLink(e.target.value)} />
+          <div className="btn-row" style={{ marginTop:0 }}>
+            <button className="btn btn-sm" onClick={() => setForm(false)}>取消</button>
+            <button className="btn btn-sm btn-primary" disabled={busy || !note.trim()}
+              onClick={() => run(() => claimMilestone(n, i, note.trim(), normalizeUrl(link) || ""), "已回報，等待教練確認")}>送出回報</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* 完整成長路徑（學員自己看 / 教練幫學員看） */
+function JourneyView({ journey, mode, studentUid, onChanged, related = [], preview }) {
+  const [openStage, setOpenStage] = useState(null);
+  const cur = journey?.currentStage || 1;
+  const curStage = stageOf(cur);
+  const prog = stageProgress(journey, cur);
+  const finished = cur === 9 && journey?.stages?.[9]?.completedAt;
+  const days = daysInStage(journey);
+  const note = journey?.coachNote?.[cur];
+
+  return (
+    <>
+      {/* 摘要 */}
+      <div className="card-gold" style={{ marginBottom:14 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+          <div>
+            <div style={{ fontSize:10, color:"var(--gold)", letterSpacing:".12em", fontWeight:700, textTransform:"uppercase" }}>
+              {finished ? "✦ 已成為星辰聯盟成員" : `第 ${cur} / 9 階段 · ${curStage.phase}`}
+            </div>
+            <div style={{ fontFamily:"var(--font)", fontSize:28, fontWeight:600, marginTop:4 }}>{curStage.name}</div>
+            <div style={{ fontSize:13, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>{curStage.goal}</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontFamily:"var(--font)", fontSize:28, fontWeight:600, color:"var(--gold)" }}>{overallProgress(journey)}%</div>
+            <div style={{ fontSize:10, color:"var(--ink-4)", letterSpacing:".08em" }}>整體旅程</div>
+          </div>
+        </div>
+        <div style={{ marginTop:14 }}><StageBar journey={journey} /></div>
+        <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--ink-3)", marginTop:6 }}>
+          <span>本階段 {prog.done}/{prog.total} 個里程碑{prog.claimed ? ` · ${prog.claimed} 個待確認` : ""}</span>
+          {!preview && !finished && <span>已進行 {days} 天</span>}
+        </div>
+      </div>
+
+      {preview && (
+        <div className="alert-card" style={{ background:"var(--slate-pale)", borderColor:"rgba(58,74,107,.2)", fontSize:13, color:"var(--slate)" }}>
+          你的成長紀錄還在建立中，教練開通後就能開始回報進度。
+        </div>
+      )}
+
+      {/* 教練給這個階段的提醒 */}
+      {note && (
+        <div className="feedback-quote" style={{ marginBottom:12 }}>
+          <div className="feedback-author" style={{ marginBottom:4 }}>教練提醒</div>{note}
+        </div>
+      )}
+
+      {/* 目前階段的里程碑 */}
+      {!finished && (
+        <>
+          <div className="sec-h">本階段要完成的事</div>
+          <div className="card" style={{ padding:"4px 14px" }}>
+            {curStage.milestones.map((_, i) => (
+              <MilestoneRow key={i} journey={journey} n={cur} i={i} mode={preview ? "view" : mode} studentUid={studentUid} onChanged={onChanged} />
+            ))}
+          </div>
+          {canAdvance(journey) && mode === "student" && (
+            <div className="alert-card" style={{ background:"var(--sage-pale)", borderColor:"rgba(74,123,90,.25)", color:"var(--sage)", fontSize:14 }}>
+              ✓ 本階段的里程碑都完成了！教練確認後就會升到下一階段「{stageOf(cur + 1).name}」。
+            </div>
+          )}
+          <div style={{ fontSize:12, color:"var(--ink-3)", margin:"-2px 2px 4px", fontStyle:"italic" }}>
+            對應課程：{curStage.course}
+          </div>
+          {related.length > 0 && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, margin:"8px 0" }}>
+              {related.map(m => {
+                const c = getCoachModuleColor(m.coachId || "");
+                return <span key={m.id} className="badge" style={{ background:c.bg, color:c.border, border:`1px solid ${c.border}`, fontSize:12 }}>✦ {m.title}</span>;
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 全部 9 階段時間軸 */}
+      <div className="sec-h">完整旅程</div>
+      <div className="tl">
+        {STAGES.map(s => {
+          const st = stageStatus(journey, s.n);
+          const info = journey?.stages?.[s.n] || {};
+          const p = stageProgress(journey, s.n);
+          const expanded = openStage === s.n;
+          return (
+            <div key={s.n} className={"tl-item tl-" + st}>
+              <div className="tl-dot" style={{ background: st === "done" ? s.color : st === "active" ? "var(--ink)" : "var(--cream)", borderColor: st === "locked" ? "var(--cream-4)" : st === "done" ? s.color : "var(--ink)" }}>
+                {st === "done" ? <IcCheck /> : <span>{s.n}</span>}
+              </div>
+              <button className="tl-body" onClick={() => setOpenStage(expanded ? null : s.n)}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
+                  <div>
+                    <span style={{ fontSize:10, color: s.color, fontWeight:700, letterSpacing:".08em" }}>{s.tag}</span>
+                    <div style={{ fontSize:15, fontWeight:600 }}>{String(s.n).padStart(2,"0")}. {s.name}</div>
+                  </div>
+                  <div style={{ textAlign:"right", fontSize:11, color:"var(--ink-3)", flexShrink:0 }}>
+                    {st === "done" && (info.skipped ? "已具備" : <>完成 {info.completedAt}<br/>{daysBetween(info.startedAt, info.completedAt)} 天</>)}
+                    {st === "active" && <span style={{ color:"var(--gold)", fontWeight:700 }}>進行中 {p.pct}%</span>}
+                    {st === "locked" && <IcLock />}
+                  </div>
+                </div>
+                <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>{s.goal}</div>
+              </button>
+              {expanded && st !== "active" && (
+                <div className="tl-detail">
+                  {s.milestones.map((t, i) => (
+                    <div key={i} style={{ display:"flex", gap:8, fontSize:13, padding:"3px 0", color: milestoneState(journey, s.n, i) === "done" ? "var(--ink-2)" : "var(--ink-4)" }}>
+                      <span>{milestoneState(journey, s.n, i) === "done" ? "✓" : "○"}</span><span>{t}</span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize:12, color:"var(--ink-4)", marginTop:4 }}>對應課程：{s.course}</div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/* 教練／管理員：管理某位學員的成長路徑 */
+function StudentJourneySheet({ student, onClose, onChanged }) {
+  const { fetchJourney, advanceStage, setJourneyStage, setStageNote } = useAuth();
+  const [j, setJ] = useState(null);
+  const [toast, setToast] = useState("");
+  const [note, setNote] = useState("");
+  const [target, setTarget] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => fetchJourney(student.uid).then(x => { setJ(x); setNote(x?.coachNote?.[x?.currentStage] || ""); setTarget(""); });
+  useEffect(() => { load(); }, [student.uid]);
+  const changed = (msg) => { setToast(msg); load(); onChanged?.(); };
+  const run = async (fn, msg) => { setBusy(true); const r = await fn(); setBusy(false); changed(r.success ? msg : "操作失敗，請再試一次"); };
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-sheet" style={{ maxHeight:"94%" }}>
+        <div className="modal-handle" />
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+          <div className="coach-av" style={(() => { const c = getAvatarColor(student.name || ""); return { background:c.bg, color:c.text }; })()}>{student.name?.slice(0,2)}</div>
+          <div>
+            <div className="modal-title" style={{ marginBottom:0 }}>{student.name} 的成長路徑</div>
+            <div style={{ fontSize:12, color:"var(--ink-3)" }}>{student.courseType || "—"}</div>
+          </div>
+        </div>
+        {!j ? <div className="empty">載入中…</div> : (
+          <>
+            {canAdvance(j) && (
+              <button className="btn btn-primary" style={{ width:"100%", padding:12, marginBottom:12 }} disabled={busy}
+                onClick={() => run(() => advanceStage(student.uid, j), j.currentStage < 9 ? `已升到「${stageOf(j.currentStage + 1).name}」✦` : "恭喜完成全部旅程 ✦")}>
+                {j.currentStage < 9 ? `✦ 確認升階到第 ${j.currentStage + 1} 階段「${stageOf(j.currentStage + 1).name}」` : "✦ 完成共創，正式成為星辰聯盟成員"}
+              </button>
+            )}
+            <JourneyView journey={j} mode="coach" studentUid={student.uid} onChanged={changed} />
+
+            <div className="sec-h">給學員這個階段的提醒</div>
+            <textarea className="input-field" rows={2} placeholder="例：先把目標受眾縮小到一種人，再寫定位宣言" value={note} onChange={e => setNote(e.target.value)} />
+            <button className="btn btn-sm" disabled={busy || note === (j.coachNote?.[j.currentStage] || "")}
+              onClick={() => run(() => setStageNote(student.uid, j.currentStage, note.trim()), "提醒已儲存")}>儲存提醒</button>
+
+            <div className="sec-h">調整目前階段</div>
+            <div style={{ fontSize:12, color:"var(--ink-3)", marginBottom:8, fontStyle:"italic" }}>學員中途加入或已具備能力時使用；之前的階段會標記為「已具備」。</div>
+            <div className="res-row">
+              <select className="input-field" style={{ marginBottom:0 }} value={target} onChange={e => setTarget(e.target.value)}>
+                <option value="">選擇階段…</option>
+                {STAGES.map(s => <option key={s.n} value={s.n} disabled={s.n === j.currentStage}>{s.n}. {s.name}</option>)}
+              </select>
+              <button className="btn" disabled={!target || busy} onClick={() => run(() => setJourneyStage(student.uid, j, Number(target)), "階段已調整")}>套用</button>
+            </div>
+          </>
+        )}
+        <button className="btn" style={{ width:"100%", marginTop:14, border:"none", background:"none", color:"var(--ink-3)" }} onClick={onClose}>關閉</button>
+        <Toast msg={toast} onDone={() => setToast("")} />
+      </div>
+    </div>
+  );
+}
+
+/* 管理員：聯盟成長漏斗 */
+function AllianceFunnel({ journeys, students, onOpen }) {
+  const f = funnel(journeys);
+  const stuck = stuckStudents(journeys, 30);
+  const max = Math.max(1, ...f.map(x => x.count));
+  const nameOf = (uid) => students.find(s => s.uid === uid)?.name || journeys.find(j => j.id === uid)?.studentName || "學員";
+  const members = journeys.filter(j => j.currentStage === 9 && j.stages?.[9]?.completedAt).length;
+  return (
+    <>
+      <div className="sec-h">聯盟成長漏斗</div>
+      <div className="card" style={{ padding:"14px 16px" }}>
+        {journeys.length === 0 ? <div className="empty" style={{ padding:12 }}>還沒有學員成長紀錄</div> : (
+          <>
+            {f.map(x => {
+              const s = stageOf(x.n);
+              return (
+                <div key={x.n} className="fn-row">
+                  <span className="fn-label">{x.n}. {s.name}</span>
+                  <div className="fn-track">
+                    <div className="fn-bar" style={{ width:`${(x.count / max) * 100}%`, background: s.color }} />
+                  </div>
+                  <span className="fn-n">{x.count}</span>
+                  <span className="fn-days">{x.avgDays != null ? `平均 ${x.avgDays} 天` : ""}</span>
+                </div>
+              );
+            })}
+            <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"var(--ink-3)", marginTop:10, paddingTop:10, borderTop:"1px solid var(--cream-3)" }}>
+              <span>共 {journeys.length} 位學員</span>
+              <span>已成為聯盟成員 <b style={{ color:"var(--gold)" }}>{members}</b> 位</span>
+            </div>
+          </>
+        )}
+      </div>
+      {stuck.length > 0 && (
+        <div className="alert-card" style={{ background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)" }}>
+          <div style={{ fontSize:14, fontWeight:700, color:"#8A6820", marginBottom:6 }}>{stuck.length} 位學員在同一階段超過 30 天</div>
+          {stuck.slice(0, 5).map(j => (
+            <button key={j.id} className="fn-stuck" onClick={() => onOpen({ uid: j.id, name: nameOf(j.id), courseType: students.find(s => s.uid === j.id)?.courseType })}>
+              <span>{nameOf(j.id)}</span><span>{stageOf(j.currentStage).name} · {j.days} 天 →</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1578,7 +2005,8 @@ const S_TABS = [
 ];
 
 function SHome({ onSwitch }) {
-  const { profile, fetchRecords, fetchAssignment, fetchModules, fetchSessions } = useAuth();
+  const { profile, fetchRecords, fetchAssignment, fetchModules, fetchSessions, fetchJourney } = useAuth();
+  const [journey, setJourney] = useState(null);
   const name       = profile?.name || "同學";
   const [pendingCount, setPendingCount] = useState(0);
   const [nextSession,  setNextSession]  = useState(null);
@@ -1604,6 +2032,8 @@ function SHome({ onSwitch }) {
       setNextSession(future.find(s => s.status === "confirmed") || null);
     }).catch(() => {});
     fetchSessions({ status: "open" }).then(list => setOpenCount(list.filter(s => !isPast(s)).length)).catch(() => {});
+    // 成長路徑
+    fetchJourney(profile.uid).then(setJourney).catch(() => {});
     // 載入下一個待完成模組
     fetchAssignment(profile.uid).then(async (ids) => {
       if (!ids.length) return;
@@ -1617,8 +2047,10 @@ function SHome({ onSwitch }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "早安" : hour < 18 ? "午安" : "晚安";
 
-  // 取當前成長階段
-  const currentStage = GROWTH_STAGES.find(s => s.status === "active");
+  // 學員實際的成長階段（還沒建立時依課程班別預估）
+  const j = journey || (profile ? initialJourney(profile) : null);
+  const currentStage = j ? stageOf(j.currentStage) : null;
+  const stageProg = j ? stageProgress(j, j.currentStage) : null;
 
   return (
     <div className="screen-enter">
@@ -1638,23 +2070,19 @@ function SHome({ onSwitch }) {
             {courseType ? courseType : "你的旅程正在前進"}
           </div>
           {currentStage && (
-            <div style={{ marginTop:14 }}>
+            <button onClick={() => onSwitch("growth")} style={{ display:"block", width:"100%", textAlign:"left", marginTop:14, border:"none", background:"none", padding:0, cursor:"pointer", fontFamily:"var(--font)", color:"inherit" }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:7 }}>
                 <span style={{ fontSize:10, letterSpacing:".1em", textTransform:"uppercase", color:"var(--gold)", fontWeight:700 }}>
-                  當前階段 · {currentStage.num}
+                  第 {j.currentStage} / 9 階段 · {currentStage.name}
                 </span>
-                <span style={{ fontSize:12, color:"var(--gold)", fontWeight:500 }}>
-                  {currentStage.name}
-                </span>
+                <span style={{ fontSize:12, color:"var(--gold)", fontWeight:600 }}>整體 {overallProgress(j)}%</span>
               </div>
-              <div className="stage-bar">{STAGE_SEGS.map((s,i)=><div key={i} className={`stage-seg ${s}`}/>)}</div>
-              <div style={{ display:"flex", justifyContent:"space-between", marginTop:6 }}>
-                <span style={{ fontSize:11, color:"rgba(197,162,74,.7)" }}>{currentStage.sub}</span>
-                <span className="badge badge-gold" style={{ fontSize:10 }} onClick={() => onSwitch("growth")}>
-                  查看路徑 →
-                </span>
+              <StageBar journey={j} />
+              <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:11, color:"var(--ink-3)" }}>
+                <span>本階段 {stageProg.done}/{stageProg.total} 個里程碑{stageProg.claimed ? `（${stageProg.claimed} 個待確認）` : ""}</span>
+                <span style={{ color:"var(--gold)" }}>查看路徑 →</span>
               </div>
-            </div>
+            </button>
           )}
         </div>
 
@@ -1888,14 +2316,31 @@ function StudentModuleCard({ m }) {
           <span style={{ fontSize:12, color:"var(--ink-4)", whiteSpace:"nowrap" }}>{open ? "收合 ▲" : "學習資料 ▼"}</span>
         </div>
       </div>
-      {open && <div style={{ padding:"0 14px 14px" }}><ResourcePanel moduleId={m.id} /></div>}
+      {open && <div style={{ padding:"0 14px 14px" }}><ResourceManager moduleId={m.id} canManage={false} /></div>}
     </div>
   );
 }
 
 
 function SGrowth({ onSwitch }) {
-  const { profile } = useAuth();
+  const { profile, fetchJourney, fetchAssignment, fetchModules } = useAuth();
+  const [journey, setJourney] = useState(undefined);   // undefined=載入中、null=尚未建立
+  const [modules, setModules] = useState([]);
+  const [toast,   setToast]   = useState("");
+  const load = () => profile?.uid && fetchJourney(profile.uid).then(setJourney);
+  useEffect(() => {
+    load();
+    if (!profile?.uid) return;
+    fetchAssignment(profile.uid).then(async ids => {
+      if (!ids.length) return;
+      const all = await fetchModules();
+      setModules(all.filter(m => ids.includes(m.id)));
+    }).catch(() => {});
+  }, [profile?.uid]);
+
+  const j = journey || (profile ? initialJourney(profile) : null);
+  const related = j ? modules.filter(m => (m.stage || []).includes(stageOf(j.currentStage).name)) : [];
+
   return (
     <div className="screen-enter">
       <div className="topbar">
@@ -1903,29 +2348,12 @@ function SGrowth({ onSwitch }) {
         <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||""); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{(profile?.name||"?").slice(0,1)}</div>
       </div>
       <div className="content">
-        <div className="card-gold" style={{ marginBottom:14 }}>
-          <div style={{ fontSize:9, color:"var(--gold)", letterSpacing:".12em", fontWeight:700, marginBottom:8, textTransform:"uppercase" }}>✦ 目前所在階段</div>
-          <div style={{ fontFamily:"var(--font)", fontSize:28, fontWeight:600, letterSpacing:"-.02em" }}>定位</div>
-          <div style={{ fontSize:13, color:"rgba(197,162,74,.7)", marginTop:4, lineHeight:1.5 }}>找到屬於你的位置，讓能力被市場看見</div>
-          <div style={{ marginTop:16 }}>
-            <div className="stage-bar">{STAGE_SEGS.map((s,i)=><div key={i} className={`stage-seg ${s}`}/>)}</div>
-            <div style={{ display:"flex", justifyContent:"space-between", marginTop:7 }}>
-              <span style={{ fontSize:11, color:"var(--gold-light)" }}>第 4 / 9 階段</span>
-              <span style={{ fontSize:11, color:"var(--ink-3)" }}>預計還需 8 週</span>
-            </div>
-          </div>
-        </div>
-        <div style={{ display:"flex", gap:12, padding:"8px 14px", background:"var(--cream-2)", borderRadius:"var(--r)", marginBottom:14, flexWrap:"wrap" }}>
-          {[["#C5A24A","入星"],["#6C5CE7","賦能"],["#0FB89A","驗證"],["#E0614E","創業"]].map(([c,l])=>(
-            <div key={l} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--ink-3)" }}>
-              <div style={{ width:7,height:7,borderRadius:"50%",background:c }}/>{l}
-            </div>
-          ))}
-        </div>
-        <div className="journey">
-          {GROWTH_STAGES.map(s => <GrowthItem key={s.num} s={s} />)}
-        </div>
+        {journey === undefined ? <div className="empty">載入中…</div> : (
+          <JourneyView journey={j} mode="student" studentUid={profile?.uid} related={related} preview={journey === null}
+            onChanged={(msg) => { setToast(msg); load(); }} />
+        )}
       </div>
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={S_TABS} active="growth" onSwitch={onSwitch} />
     </div>
   );
@@ -2022,7 +2450,10 @@ function SFeedback({ onSwitch }) {
 ════════════════════════════════════════ */
 
 function CHome({ onSwitch }) {
-  const { profile, fetchMembers, fetchModules, fetchRecords, fetchAssignment, fetchSessions, fetchFeedbacks } = useAuth();
+  const { profile, fetchMembers, fetchModules, fetchRecords, fetchAssignment, fetchSessions, fetchFeedbacks, ensureJourneys } = useAuth();
+  const [journeys,  setJourneys]  = useState([]);
+  const [jStudent,  setJStudent]  = useState(null);
+  const [jRefresh,  setJRefresh]  = useState(0);
   const [upcoming,  setUpcoming]  = useState([]);   // 今天起的課程
   const [schedCnt,  setSchedCnt]  = useState({});
   const [feedbacks, setFeedbacks] = useState([]);
@@ -2031,6 +2462,11 @@ function CHome({ onSwitch }) {
   const [unassigned,      setUnassigned]      = useState([]);  // 尚未分配課程的學員
   const [recentRecords,   setRecentRecords]   = useState([]);  // 最近 3 筆上課記錄
   const [loading,         setLoading]         = useState(true);
+
+  useEffect(() => {
+    if (!jRefresh || !students.length) return;
+    ensureJourneys(students).then(setJourneys).catch(() => {});
+  }, [jRefresh]);
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -2051,6 +2487,7 @@ function CHome({ onSwitch }) {
     ]).then(async ([members, modules, records]) => {
       const studentList = members.filter(m => m.role === "student");
       setStudents(studentList);
+      ensureJourneys(studentList).then(setJourneys).catch(() => {});
       setModuleCount(modules.filter(m => m.coachId === profile.uid).length);
 
       // 找出尚未有任何分配記錄的學員
@@ -2157,6 +2594,50 @@ function CHome({ onSwitch }) {
           </>
         )}
 
+        {/* ── 學員回報待確認（最需要教練行動）── */}
+        {(() => {
+          const claims = journeys.flatMap(j => pendingClaims(j).map(c => ({ ...c, j })));
+          if (!claims.length) return null;
+          return (
+            <div className="alert-card" style={{ background:"var(--gold-pale)", borderColor:"var(--gold-line)" }}>
+              <div style={{ fontSize:14, fontWeight:700, color:"var(--gold)", marginBottom:6 }}>{claims.length} 個里程碑回報等你確認</div>
+              {claims.slice(0, 4).map(c => {
+                const st = students.find(x => x.uid === c.j.id);
+                return (
+                  <button key={c.j.id + c.key} className="fn-stuck" onClick={() => st && setJStudent(st)}>
+                    <span>{st?.name || c.j.studentName}：{c.text}</span><span>→</span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* ── 學員成長 ── */}
+        {students.length > 0 && (
+          <>
+            <div className="sec-h">學員成長</div>
+            <div className="card" style={{ padding:"4px 14px" }}>
+              {students.map((st, i) => {
+                const j = journeys.find(x => x.id === st.uid);
+                const stage = j ? stageOf(j.currentStage) : null;
+                const pc = j ? pendingClaims(j).length : 0;
+                return (
+                  <button key={st.uid} className="coach-row grow-row" style={i === students.length - 1 ? { borderBottom:"none" } : {}} onClick={() => setJStudent(st)}>
+                    <div className="coach-av" style={(() => { const c = getAvatarColor(st.name || ""); return { background:c.bg, color:c.text, fontSize:12 }; })()}>{st.name?.slice(0,2)}</div>
+                    <div style={{ flex:1, minWidth:0, textAlign:"left" }}>
+                      <div className="coach-name">{st.name}{pc > 0 && <span className="nav-badge" style={{ position:"static", display:"inline-flex", marginLeft:6 }}>{pc}</span>}</div>
+                      <div className="coach-tag">{stage ? `${j.currentStage}. ${stage.name} · 已 ${daysInStage(j)} 天` : "建立中…"}</div>
+                      {j && <div style={{ marginTop:5 }}><StageBar journey={j} /></div>}
+                    </div>
+                    <span style={{ fontSize:13, color:"var(--gold)", fontWeight:600, flexShrink:0 }}>{j ? `${overallProgress(j)}%` : ""}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         {/* ── 近期課表 ── */}
         <div className="sec-h" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <span>近期課表</span>
@@ -2215,169 +2696,82 @@ function CHome({ onSwitch }) {
         )}
 
       </div>
+      {jStudent && <StudentJourneySheet student={jStudent} onClose={() => setJStudent(null)} onChanged={() => setJRefresh(r => r + 1)} />}
       <BottomNav tabs={C_TABS} active="home" onSwitch={onSwitch} />
     </div>
   );
 }
 
-/* ── 模組狀態標籤 ── */
-const MODULE_STATUS = {
-  draft:     { label:"草稿",   bg:"var(--cream-2)",   color:"var(--ink-3)",  border:"var(--cream-3)" },
-  pending:   { label:"待審核", bg:"#FEF3D0",           color:"#8A6820",       border:"rgba(138,104,32,.2)" },
-  published: { label:"已發布", bg:"var(--sage-pale)",  color:"var(--sage)",   border:"rgba(74,123,90,.22)" },
-  rejected:  { label:"已退回", bg:"var(--rust-pale)",  color:"var(--rust)",   border:"rgba(139,58,42,.2)" },
-};
-
-function ModuleCard({ m, isOwn, onEdit, onDelete }) {
-  const [open, setOpen] = useState(false);
-  const st    = MODULE_STATUS[m.status] || MODULE_STATUS.published;
+function ModuleCard({ m, isOwn, onOpen }) {
+  const { fetchModuleResources } = useAuth();
+  const [count, setCount] = useState(null);
+  useEffect(() => { fetchModuleResources(m.id).then(l => setCount(l.length)).catch(() => {}); }, [m.id, m._v]);
   const color = getCoachModuleColor(m.coachId || m.coachName || "");
-
   return (
-    <div style={{
-      background: isOwn ? color.bg : "var(--cream-2)",
-      border: `1px solid ${isOwn ? color.border : "var(--cream-3)"}`,
-      borderLeft: `3px solid ${color.border}`,
-      borderRadius:"var(--r-lg)", marginBottom:10,
-      overflow:"hidden",
-      opacity: isOwn ? 1 : 0.82,
-    }}>
-      {/* ── 教練色標 + 操作按鈕 ── */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding:"8px 14px 0", gap:8 }}>
-        {/* 教練名稱色標 */}
-        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-          <div style={{ width:8, height:8, borderRadius:"50%", background:color.border, flexShrink:0 }} />
-          <span style={{ fontSize:11, color:color.border, fontWeight:700, letterSpacing:".04em" }}>
-            {m.coachName || "—"}
-          </span>
-          {isOwn && (
-            <span style={{ fontSize:10, color:color.border, background:"rgba(255,255,255,.7)",
-              border:`1px solid ${color.border}`, borderRadius:"var(--r-pill)", padding:"1px 7px", letterSpacing:".04em" }}>
-              我的
-            </span>
-          )}
-        </div>
-        {/* 操作按鈕（只有自己的才有）*/}
-        {isOwn && (
-          <div style={{ display:"flex", gap:5, flexShrink:0 }}>
-            <button className="btn btn-sm" style={{ padding:"3px 9px", fontSize:11 }}
-              onClick={e => { e.stopPropagation(); onEdit(m); }}>編輯</button>
-            <button className="btn btn-sm"
-              style={{ padding:"3px 9px", fontSize:11, color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }}
-              onClick={e => { e.stopPropagation(); onDelete(m.id); }}>刪除</button>
-          </div>
-        )}
+    <button className="mod-tile" onClick={() => onOpen(m)} style={{
+      background: isOwn ? color.bg : "#fff", borderColor: isOwn ? color.border : "var(--cream-3)", borderLeftColor: color.border }}>
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+        <span className="cal-dot" style={{ background: color.border, width:7, height:7 }} />
+        <span style={{ fontSize:11, color: color.border, fontWeight:700 }}>{m.coachName || "—"}</span>
+        {isOwn && <span className="mod-mine" style={{ color: color.border, borderColor: color.border }}>我的</span>}
       </div>
-
-      {/* ── 主要內容（可展開）── */}
-      <div style={{ padding:"10px 14px 12px", cursor:"pointer" }} onClick={() => setOpen(o => !o)}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-          <div style={{ flex:1 }}>
-            {/* Tags */}
-            <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:6 }}>
-              {(m.stage||[]).map(s => (
-                <span key={s} className="badge" style={{
-                  background:"rgba(255,255,255,.7)", color:color.border,
-                  border:`1px solid ${color.border}`, fontSize:10 }}>{s}</span>
-              ))}
-              {m.duration && (
-                <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>
-                  ⏱ {m.duration}
-                </span>
-              )}
-              {(m.method||[]).map(mt => (
-                <span key={mt} className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>
-                  {mt}
-                </span>
-              ))}
-            </div>
-            <div className="mod-title">{m.title}</div>
-            {m.outline && <div className="mod-outline" style={{ marginTop:4 }}>{m.outline}</div>}
-          </div>
-          <span style={{ fontSize:13, color:"var(--ink-4)", marginLeft:10, flexShrink:0 }}>{open ? "▲" : "▼"}</span>
-        </div>
-
-        {/* 展開區 */}
-        {open && (
-          <div style={{ borderTop:`1px solid ${isOwn ? color.border+"44" : "var(--cream-3)"}`, marginTop:10, paddingTop:10 }}>
-            {isOwn && (
-              <ResourcePanel moduleId={m.id} />
-            )}
-            {!isOwn && (
-              <div style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic", textAlign:"center", padding:"8px 0" }}>
-                僅可檢視其他教練的課程模組
-              </div>
-            )}
-          </div>
-        )}
+      <div className="mod-title">{m.title}</div>
+      {m.outline && <div className="mod-outline mod-clamp">{m.outline}</div>}
+      <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:8 }}>
+        {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background:"rgba(255,255,255,.75)", color: color.border, border:`1px solid ${color.border}`, fontSize:10 }}>{s}</span>)}
+        {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>}
       </div>
-    </div>
+      <div className="mod-foot">
+        <span>📎 {count == null ? "…" : count} 份學習資料</span>
+        <span style={{ color: color.border }}>{isOwn ? "管理資料 →" : "查看 →"}</span>
+      </div>
+    </button>
   );
 }
 
 function CModules({ onSwitch, onModal }) {
   const { profile, fetchModules, deleteModule } = useAuth();
   const [tab,        setTab]        = useState("mine");   // "mine" | "all"
-  const [myModules,  setMyModules]  = useState([]);
-  const [allModules, setAllModules] = useState([]);
+  const [modules,    setModules]    = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [editTarget, setEditTarget] = useState(null);
-  const [confirmDel, setConfirmDel] = useState(null);
+  const [sheetId,    setSheetId]    = useState(null);
+  const [toast,      setToast]      = useState("");
 
   useEffect(() => {
     if (!profile?.uid) return;
     setLoading(true);
     fetchModules().then(all => {
-      setMyModules(all.filter(m => m.coachId === profile.uid));
-      setAllModules(all.filter(m => m.coachId !== profile.uid));
+      setModules(all.map(m => ({ ...m, _v: refreshKey })));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [refreshKey, profile?.uid]);
 
-  const handleModal  = () => onModal("module", () => setRefreshKey(k => k+1));
-  const handleEdit   = (m) => setEditTarget(m);
+  const myModules  = modules.filter(m => m.coachId === profile?.uid);
+  const allModules = modules.filter(m => m.coachId !== profile?.uid);
+  const sheet = modules.find(m => m.id === sheetId);
+
+  // 新增完成後直接打開模組，接著加學習資料
+  const handleModal  = () => onModal("module", (r) => {
+    setRefreshKey(k => k + 1);
+    if (r?.id) { setTab("mine"); setSheetId(r.id); setToast("模組已建立，接著加入學習資料吧"); }
+  });
   const handleDelete = async (id) => {
     await deleteModule(id);
-    setConfirmDel(null);
-    setRefreshKey(k => k+1);
+    setSheetId(null); setToast("模組已刪除");
+    setRefreshKey(k => k + 1);
   };
 
   const displayList = tab === "mine" ? myModules : allModules;
 
   return (
     <div className="screen-enter">
-      {/* 確認刪除 */}
-      {confirmDel && (
-        <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.45)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
-          <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:320 }}>
-            <div style={{ fontFamily:"var(--font)",fontSize:18,fontWeight:600,marginBottom:10 }}>確認刪除模組</div>
-            <div style={{ fontSize:14,color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除此課程模組嗎？此動作無法復原。</div>
-            <div className="btn-row" style={{ marginTop:0 }}>
-              <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
-              <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }}
-                onClick={() => handleDelete(confirmDel)}>確認刪除</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 編輯 Modal */}
-      {editTarget && (
-        <ModalAddModule
-          editData={editTarget}
-          onClose={(saved) => { setEditTarget(null); if(saved) setRefreshKey(k=>k+1); }} />
-      )}
-
       <div className="topbar">
         <div className="topbar-title">課程模組</div>
-        {tab === "mine" && (
-          <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增</button>
-        )}
+        {tab === "mine" && <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增</button>}
       </div>
 
-      {/* 頁籤 */}
       <div className="inner-tabs" style={{ padding:"0 16px" }}>
         <button className={"inner-tab"+(tab==="mine"?" active":"")} onClick={() => setTab("mine")}>
           我的課程 {!loading && <span style={{ fontSize:10, marginLeft:4, opacity:.7 }}>({myModules.length})</span>}
@@ -2388,24 +2782,27 @@ function CModules({ onSwitch, onModal }) {
       </div>
 
       <div className="content" style={{ paddingTop:10 }}>
-        {loading ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48 }}>載入中…</div>
-        ) : displayList.length === 0 ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>
-            {tab === "mine"
-              ? <><span>尚未建立課程模組</span><br/>
-                  <button className="btn" style={{ marginTop:16 }} onClick={handleModal}><IcPlus />新增第一個課程模組</button></>
-              : <span style={{ fontStyle:"italic" }}>其他教練目前尚無課程模組</span>}
-          </div>
-        ) : displayList.map(m => (
-          <ModuleCard
-            key={m.id}
-            m={m}
-            isOwn={tab === "mine"}
-            onEdit={handleEdit}
-            onDelete={id => setConfirmDel(id)} />
-        ))}
+        {loading ? <div className="empty">載入中…</div>
+          : displayList.length === 0 ? (
+            <div className="empty" style={{ marginTop:24 }}>
+              {tab === "mine"
+                ? <><span>尚未建立課程模組</span><br/>
+                    <button className="btn" style={{ marginTop:16 }} onClick={handleModal}><IcPlus />新增第一個課程模組</button></>
+                : <span style={{ fontStyle:"italic" }}>其他教練目前尚無課程模組</span>}
+            </div>
+          ) : displayList.map(m => <ModuleCard key={m.id} m={m} isOwn={tab === "mine"} onOpen={(x) => setSheetId(x.id)} />)}
       </div>
+
+      {sheet && (
+        <ModuleSheet m={sheet} isOwn={sheet.coachId === profile?.uid}
+          onClose={() => { setSheetId(null); setRefreshKey(k => k + 1); }}
+          onEdit={(m) => setEditTarget(m)} onDelete={handleDelete} />
+      )}
+      {editTarget && (
+        <ModalAddModule editData={editTarget}
+          onClose={(saved) => { setEditTarget(null); if (saved) { setRefreshKey(k => k + 1); setToast("課程資訊已更新"); } }} />
+      )}
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={C_TABS} active="modules" onSwitch={onSwitch} />
     </div>
   );
@@ -2740,254 +3137,6 @@ function CRecords({ onSwitch, onModal }) {
   );
 }
 
-function CMembers({ onSwitch }) {
-  const { addMember, fetchMembers, updateMember, deleteMember, profile } = useAuth();
-  const [members,   setMembers]   = useState([]);
-  const [tab,       setTab]       = useState("list");
-  const [loading,   setLoading]   = useState(false);
-  const [result,    setResult]    = useState(null);
-  const [editTarget, setEditTarget] = useState(null); // 編輯中的成員
-  const [confirmDel, setConfirmDel] = useState(null); // 待確認刪除的 uid
-
-  const blankForm = {
-    name:"", email:"", password:"", birthdate:"",
-    coachName: profile?.name||"", courseType:"個人賦能班",
-    joinDate: todayStr(), role:"student",
-  };
-  const [form, setForm] = useState(blankForm);
-
-  const loadMembers = () => fetchMembers().then(setMembers).catch(() => {});
-
-  useEffect(() => {
-    if (tab === "list") loadMembers();
-  }, [tab]);
-
-  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  // 新增
-  const handleAdd = async e => {
-    e.preventDefault();
-    if (!form.name || !form.email || !form.password) {
-      setResult({ ok:false, msg:"姓名、Email、密碼為必填。" }); return;
-    }
-    setLoading(true); setResult(null);
-    const res = await addMember({ ...form });
-    setLoading(false);
-    if (res.success) {
-      setResult({ ok:true, msg:`${form.name} 已成功新增！` });
-      setForm({ ...blankForm, role: form.role });
-    } else {
-      setResult({ ok:false, msg: res.error });
-    }
-  };
-
-  // 進入編輯模式
-  const startEdit = m => {
-    setEditTarget(m);
-    setForm({
-      name:       m.name       || "",
-      email:      m.email      || "",
-      password:   "",
-      birthdate:  m.birthdate  || "",
-      coachName:  m.coachName  || "",
-      courseType: m.courseType || "個人賦能班",
-      joinDate:   m.joinDate   || "",
-      role:       m.role       || "student",
-    });
-    setTab("add");
-    setResult(null);
-  };
-
-  // 儲存編輯
-  const handleEdit = async e => {
-    e.preventDefault();
-    if (!form.name) { setResult({ ok:false, msg:"姓名為必填。" }); return; }
-    setLoading(true); setResult(null);
-    const data = {
-      name:       form.name,
-      birthdate:  form.birthdate,
-      coachName:  form.coachName,
-      courseType: form.courseType,
-      joinDate:   form.joinDate,
-    };
-    const res = await updateMember(editTarget.uid, data);
-    setLoading(false);
-    if (res.success) {
-      setResult({ ok:true, msg:`${form.name} 資料已更新！` });
-      setEditTarget(null);
-      loadMembers();
-    } else {
-      setResult({ ok:false, msg:"更新失敗，請再試一次。" });
-    }
-  };
-
-  // 刪除確認
-  const handleDelete = async uid => {
-    const res = await deleteMember(uid);
-    setConfirmDel(null);
-    if (res.success) {
-      setMembers(ms => ms.filter(m => m.uid !== uid));
-    }
-  };
-
-  const roleLabel = r => r === "coach" ? "教練" : "學員";
-  const rColor    = r => r === "coach" ? "var(--sage)"      : "var(--slate)";
-  const rBg       = r => r === "coach" ? "var(--sage-pale)" : "var(--slate-pale)";
-  const rBorder   = r => r === "coach" ? "rgba(74,123,90,.22)" : "rgba(58,74,107,.18)";
-
-  const isEdit = !!editTarget;
-
-  return (
-    <div className="screen-enter">
-      {/* 確認刪除 Dialog */}
-      {confirmDel && (
-        <div style={{ position:"absolute", inset:0, background:"rgba(28,26,23,.5)", backdropFilter:"blur(6px)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-          <div style={{ background:"var(--cream)", border:"1px solid var(--cream-3)", borderRadius:"var(--r-xl)", padding:"26px 24px", width:"100%", maxWidth:320 }}>
-            <div style={{ fontFamily:"var(--font)", fontSize:18, fontWeight:600, marginBottom:10 }}>確認刪除</div>
-            <div style={{ fontSize:14, color:"var(--ink-2)", lineHeight:1.65, marginBottom:20 }}>
-              確定要刪除 <strong>{members.find(m => m.uid === confirmDel)?.name}</strong> 嗎？<br />
-              <span style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic" }}>此動作只會刪除系統資料，登入帳號仍保留。</span>
-            </div>
-            <div className="btn-row" style={{ marginTop:0 }}>
-              <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
-              <button className="btn" style={{ background:"var(--rust-pale)", color:"var(--rust)", borderColor:"rgba(139,58,42,.2)" }}
-                onClick={() => handleDelete(confirmDel)}>確認刪除</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="topbar">
-        <div className="topbar-title">成員管理</div>
-        <button
-          className={tab === "add" ? "btn btn-primary btn-sm" : "btn btn-sm"}
-          onClick={() => {
-            if (tab === "add") { setTab("list"); setEditTarget(null); setResult(null); }
-            else { setForm(blankForm); setEditTarget(null); setTab("add"); setResult(null); }
-          }}>
-          {tab === "add" ? "← 返回" : "+ 新增成員"}
-        </button>
-      </div>
-
-      {tab === "list" ? (
-        <div className="content">
-          <div className="sec-h">所有成員（{members.length} 人）</div>
-          {members.length === 0 && (
-            <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:36, lineHeight:1.7 }}>
-              還沒有成員<br /><span style={{ fontSize:12 }}>點右上角「+ 新增成員」</span>
-            </div>
-          )}
-          {members.map(m => (
-            <div key={m.uid} className="card card-sm" style={{ marginBottom:8 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <div className="coach-av" style={(() => { const c = getAvatarColor(m.name||""); return { background: c.bg, color: c.text, fontSize:12, flexShrink:0 }; })()}>
-                  {m.name?.slice(0,2) || "??"}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-                    <span style={{ fontSize:14, fontWeight:600, letterSpacing:"-.01em" }}>{m.name}</span>
-                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:"var(--r-pill)", background:rBg(m.role), color:rColor(m.role), border:`1px solid ${rBorder(m.role)}` }}>
-                      {roleLabel(m.role)}
-                    </span>
-                  </div>
-                  <div style={{ fontSize:11, color:"var(--ink-3)" }}>{m.email}</div>
-                  {m.courseType && (
-                    <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2 }}>
-                      {m.courseType}{m.joinDate ? " · " + m.joinDate : ""}
-                    </div>
-                  )}
-                </div>
-                {/* 操作按鈕 */}
-                <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                  <button className="btn btn-sm" style={{ padding:"5px 10px", fontSize:12 }}
-                    onClick={() => startEdit(m)}>編輯</button>
-                  <button className="btn btn-sm"
-                    style={{ padding:"5px 10px", fontSize:12, color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }}
-                    onClick={() => setConfirmDel(m.uid)}>刪除</button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="content">
-          {result && (
-            <div style={{ padding:"11px 14px", borderRadius:"var(--r)", marginBottom:14, fontSize:13, textAlign:"center", lineHeight:1.5,
-              background: result.ok ? "var(--sage-pale)" : "var(--rust-pale)",
-              border: `1px solid ${result.ok ? "rgba(74,123,90,.22)" : "rgba(139,58,42,.2)"}`,
-              color: result.ok ? "var(--sage)" : "var(--rust)" }}>
-              {result.msg}
-            </div>
-          )}
-
-          {isEdit && (
-            <div style={{ padding:"8px 12px", background:"var(--slate-pale)", borderRadius:"var(--r)", marginBottom:14, fontSize:13, color:"var(--slate)", border:"1px solid rgba(58,74,107,.18)" }}>
-              ✏ 編輯模式：{editTarget.name} ({editTarget.email})
-            </div>
-          )}
-
-          <form onSubmit={isEdit ? handleEdit : handleAdd}>
-            {!isEdit && (
-              <>
-                <div className="input-label">角色</div>
-                <div className="chip-group" style={{ marginBottom:12 }}>
-                  {["student","coach"].map(r => (
-                    <div key={r} className={"chip" + (form.role === r ? " sel" : "")} onClick={() => setField("role", r)}>
-                      {r === "student" ? "✦ 學員" : "🎓 教練"}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div className="input-label">姓名 *</div>
-            <input className="input-field" placeholder="王小明" value={form.name}
-              onChange={e => setField("name", e.target.value)} />
-
-            {!isEdit && (
-              <>
-                <div className="input-label">Email *</div>
-                <input className="input-field" type="email" placeholder="member@email.com" value={form.email}
-                  onChange={e => setField("email", e.target.value)} />
-                <div className="input-label">初始密碼 *（至少 6 碼）</div>
-                <input className="input-field" type="text" placeholder="設定後請告知對方" value={form.password}
-                  onChange={e => setField("password", e.target.value)} />
-              </>
-            )}
-
-            {(form.role === "student" || isEdit) && (
-              <>
-                <div className="input-label">出生年月日</div>
-                <input className="input-field" type="date" value={form.birthdate}
-                  onChange={e => setField("birthdate", e.target.value)} />
-                <div className="input-label">課程班別</div>
-                <div className="chip-group" style={{ marginBottom:12 }}>
-                  {COURSE_TYPES.map(c => (
-                    <div key={c} className={"chip" + (form.courseType === c ? " sel" : "")}
-                      onClick={() => setField("courseType", c)}>{c}</div>
-                  ))}
-                </div>
-                <div className="input-label">加入日期</div>
-                <input className="input-field" type="date" value={form.joinDate}
-                  onChange={e => setField("joinDate", e.target.value)} />
-                <div className="input-label">主要聯絡教練（選填）</div>
-                <input className="input-field" placeholder="留空代表由所有教練共同協助" value={form.coachName}
-                  onChange={e => setField("coachName", e.target.value)} />
-              </>
-            )}
-
-            <button type="submit" className="btn btn-primary"
-              style={{ width:"100%", justifyContent:"center", marginTop:4 }}
-              disabled={loading}>
-              {loading ? "處理中…" : isEdit ? "✦ 儲存變更" : `✦ 確認新增${form.role === "student" ? "學員" : "教練"}`}
-            </button>
-          </form>
-        </div>
-      )}
-      <BottomNav tabs={C_TABS} active="members" onSwitch={onSwitch} />
-    </div>
-  );
-}
 
 /* ════════════════════════════════════════
    LOGIN / NO ACCESS
@@ -3057,7 +3206,9 @@ const A_TABS = [
 ];
 
 function AHome({ onSwitch }) {
-  const { profile, fetchMembers, fetchModules, fetchRecords } = useAuth();
+  const { profile, fetchMembers, fetchModules, fetchRecords, ensureJourneys } = useAuth();
+  const [journeys, setJourneys] = useState([]);
+  const [jStudent, setJStudent] = useState(null);
   const [data,    setData]    = useState({ members:[], coaches:[], students:[], modules:[], recentRecords:[] });
   const [loading, setLoading] = useState(true);
 
@@ -3067,8 +3218,9 @@ function AHome({ onSwitch }) {
       fetchModules(),
       fetchRecords(),
     ]).then(([members, modules, records]) => {
-      const coaches  = members.filter(m => m.role === "coach");
+      const coaches  = members.filter(m => (m.roles || [m.role]).includes("coach"));
       const students = members.filter(m => m.role === "student");
+      ensureJourneys(students).then(setJourneys).catch(() => {});
       const sorted   = records.sort((a,b) => (b.date||"").localeCompare(a.date||""));
       setData({ members, coaches, students, modules, recentRecords: sorted.slice(0,4) });
       setLoading(false);
@@ -3106,6 +3258,9 @@ function AHome({ onSwitch }) {
             ))}
           </div>
         </div>
+
+        {/* ── 聯盟成長漏斗：看出哪個階段最需要投入資源 ── */}
+        {!loading && <AllianceFunnel journeys={journeys} students={data.students} onOpen={setJStudent} />}
 
         {/* ── 近期活動：最新成員 ── */}
         {!loading && data.members.length > 0 && (
@@ -3170,6 +3325,7 @@ function AHome({ onSwitch }) {
         )}
 
       </div>
+      {jStudent && <StudentJourneySheet student={jStudent} onClose={() => setJStudent(null)} onChanged={() => ensureJourneys(data.students).then(setJourneys)} />}
       <BottomNav tabs={A_TABS} active="home" onSwitch={onSwitch} />
     </div>
   );
@@ -3185,7 +3341,7 @@ function AMembers({ onSwitch }) {
   const [editTarget, setEditTarget] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
 
-  const blankForm = { name:"",email:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:todayStr(),role:"student" };
+  const blankForm = { name:"",email:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:todayStr(),roles:["student"] };
   const [form, setForm] = useState(blankForm);
 
   const loadMembers = () => fetchMembers().then(setMembers).catch(() => {});
@@ -3199,21 +3355,32 @@ function AMembers({ onSwitch }) {
     setLoading(true); setResult(null);
     const res = await addMember({...form});
     setLoading(false);
-    if (res.success) { setResult({ok:true,msg:`${form.name} 已成功新增！`}); setForm({...blankForm,role:form.role}); }
+    if (res.success) { setResult({ok:true,msg:`${form.name} 已成功新增！`}); setForm({...blankForm,roles:form.roles}); }
     else setResult({ok:false,msg:res.error});
   };
 
-  const startEdit = m => { setEditTarget(m); setForm({name:m.name||"",email:m.email||"",password:"",birthdate:m.birthdate||"",coachName:m.coachName||"",courseType:m.courseType||"個人賦能班",joinDate:m.joinDate||"",role:m.role||"student"}); setTab("add"); setResult(null); };
+  const startEdit = m => { setEditTarget(m); setForm({name:m.name||"",email:m.email||"",password:"",birthdate:m.birthdate||"",coachName:m.coachName||"",courseType:m.courseType||"個人賦能班",joinDate:m.joinDate||"",roles:(m.roles && m.roles.length ? m.roles : [m.role||"student"])}); setTab("add"); setResult(null); };
 
   const handleEdit = async e => {
     e.preventDefault();
     if (!form.name) { setResult({ok:false,msg:"姓名為必填。"}); return; }
     setLoading(true); setResult(null);
-    const res = await updateMember(editTarget.uid, {name:form.name,birthdate:form.birthdate,coachName:form.coachName,courseType:form.courseType,joinDate:form.joinDate});
+    if (editTarget.uid === profile?.uid && !form.roles.includes("admin")) { setLoading(false); setResult({ok:false,msg:"不能移除自己的管理員身分，否則會無法再管理系統。"}); return; }
+    const res = await updateMember(editTarget.uid, {name:form.name,birthdate:form.birthdate,coachName:form.coachName,courseType:form.courseType,joinDate:form.joinDate,roles:form.roles});
     setLoading(false);
     if (res.success) { setResult({ok:true,msg:`${form.name} 資料已更新！`}); setEditTarget(null); loadMembers(); }
     else setResult({ok:false,msg:"更新失敗。"});
   };
+
+  // 學員身分獨立；教練與管理員可以同時擁有
+  const toggleRole = (r) => setForm(f => {
+    if (r === "student") return { ...f, roles: ["student"] };
+    const staff = f.roles.filter(x => x !== "student");
+    const next = staff.includes(r) ? staff.filter(x => x !== r) : [...staff, r];
+    return { ...f, roles: next.length ? next : [r] };
+  });
+  const ROLE_NAME = { admin:"管理員", coach:"教練", student:"學員" };
+  const isStudentForm = form.roles.includes("student");
 
   const handleDelete = async uid => { await deleteMember(uid); setConfirmDel(null); setMembers(ms=>ms.filter(m=>m.uid!==uid)); };
 
@@ -3245,7 +3412,7 @@ function AMembers({ onSwitch }) {
           <div className="sec-h">所有成員（{members.length} 人）</div>
           {members.length===0 && <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:36,lineHeight:1.7 }}>還沒有成員<br/><span style={{ fontSize:12 }}>點右上角「+ 新增成員」</span></div>}
           {members.map(m => {
-            const c = rc(m.role);
+            const mRoles = m.roles && m.roles.length ? m.roles : [m.role];
             return (
               <div key={m.uid} className="card card-sm" style={{ marginBottom:8 }}>
                 <div style={{ display:"flex",alignItems:"center",gap:12 }}>
@@ -3253,7 +3420,7 @@ function AMembers({ onSwitch }) {
                   <div style={{ flex:1,minWidth:0 }}>
                     <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:2 }}>
                       <span style={{ fontSize:14,fontWeight:600,letterSpacing:"-.01em" }}>{m.name}</span>
-                      <span style={{ fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:"var(--r-pill)",background:c.bg,color:c.color,border:`1px solid ${c.border}` }}>{m.role==="admin"?"管理員":m.role==="coach"?"教練":"學員"}</span>
+                      {mRoles.map(r => { const c = rc(r); return <span key={r} style={{ fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:"var(--r-pill)",background:c.bg,color:c.color,border:`1px solid ${c.border}` }}>{ROLE_NAME[r]}</span>; })}
                     </div>
                     <div style={{ fontSize:11,color:"var(--ink-3)" }}>{m.email}</div>
                     {m.courseType && <div style={{ fontSize:11,color:"var(--ink-3)",marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
@@ -3272,16 +3439,15 @@ function AMembers({ onSwitch }) {
           {result && <div style={{ padding:"11px 14px",borderRadius:"var(--r)",marginBottom:14,fontSize:13,textAlign:"center",lineHeight:1.5,background:result.ok?"var(--sage-pale)":"var(--rust-pale)",border:`1px solid ${result.ok?"rgba(74,123,90,.22)":"rgba(139,58,42,.2)"}`,color:result.ok?"var(--sage)":"var(--rust)" }}>{result.msg}</div>}
           {editTarget && <div style={{ padding:"7px 12px",background:"var(--slate-pale)",borderRadius:"var(--r)",marginBottom:14,fontSize:13,color:"var(--slate)",border:"1px solid rgba(58,74,107,.18)" }}>✏ 編輯：{editTarget.name}</div>}
           <form onSubmit={editTarget ? handleEdit : handleAdd}>
-            {!editTarget && (
-              <>
-                <div className="input-label">角色</div>
-                <div className="chip-group" style={{ marginBottom:12 }}>
-                  {[["student","✦ 學員"],["coach","🎓 教練"],["admin","⚙ 管理員"]].map(([r,l]) => (
-                    <div key={r} className={"chip"+(form.role===r?" sel":"")} onClick={() => setField("role",r)}>{l}</div>
-                  ))}
-                </div>
-              </>
-            )}
+            <div className="input-label">身分（教練與管理員可同時勾選）</div>
+            <div className="chip-group" style={{ marginBottom:6 }}>
+              {[["student","✦ 學員"],["coach","🎓 教練"],["admin","⚙ 管理員"]].map(([r,l]) => (
+                <div key={r} className={"chip"+(form.roles.includes(r)?" sel":"")} onClick={() => toggleRole(r)}>{form.roles.includes(r) ? "✓ " : ""}{l}</div>
+              ))}
+            </div>
+            <div style={{ fontSize:12, color:"var(--ink-4)", marginBottom:12, fontStyle:"italic" }}>
+              {form.roles.length > 1 ? "此帳號登入後可在右上角切換身分" : isStudentForm ? "學員身分無法與教練、管理員同時擁有" : "可再勾選另一個身分"}
+            </div>
             <div className="input-label">姓名 *</div>
             <input className="input-field" placeholder="王小明" value={form.name} onChange={e=>setField("name",e.target.value)} />
             {!editTarget && (
@@ -3292,7 +3458,7 @@ function AMembers({ onSwitch }) {
                 <input className="input-field" type="text" placeholder="設定後請告知對方" value={form.password} onChange={e=>setField("password",e.target.value)} />
               </>
             )}
-            {(form.role==="student"||editTarget?.role==="student") && (
+            {isStudentForm && (
               <>
                 <div className="input-label">出生年月日</div>
                 <input className="input-field" type="date" value={form.birthdate} onChange={e=>setField("birthdate",e.target.value)} />
@@ -3307,7 +3473,7 @@ function AMembers({ onSwitch }) {
               </>
             )}
             <button type="submit" className="btn btn-primary" style={{ width:"100%",justifyContent:"center",marginTop:4 }} disabled={loading}>
-              {loading ? "處理中…" : editTarget ? "✦ 儲存變更" : `✦ 確認新增${form.role==="student"?"學員":form.role==="coach"?"教練":"管理員"}`}
+              {loading ? "處理中…" : editTarget ? "✦ 儲存變更" : `✦ 確認新增${form.roles.map(r => ROLE_NAME[r]).join("＋")}`}
             </button>
           </form>
         </div>
@@ -3517,15 +3683,16 @@ function ARecords({ onSwitch }) {
    ROOT APP
 ════════════════════════════════════════ */
 export default function App() {
-  const { user, profile, role, loading, logout } = useAuth();
+  const { user, profile, role, roles, switchRole, loading, logout } = useAuth();
+  const [roleMenu, setRoleMenu] = useState(false);
   const [sTab,  setSTab]  = useState("home");
   const [cTab,  setCTab]  = useState("home");
   const [aTab,  setATab]  = useState("home");
   const [modal, setModal] = useState(null);
 
   const openModal  = (type, onSuccess, payload) => setModal({ type, onSuccess: onSuccess || null, ...(payload || {}) });
-  const closeModal = (didSave) => {
-    if (didSave && modal?.onSuccess) modal.onSuccess();
+  const closeModal = (didSave, result) => {
+    if (didSave && modal?.onSuccess) modal.onSuccess(result);
     setModal(null);
   };
 
@@ -3567,16 +3734,17 @@ export default function App() {
   };
 
   // 底部導覽紅點：學員＝待確認課程數；教練＝學員改期請求數
-  const { fetchSessions } = useAuth();
+  const { fetchSessions, fetchJourneys } = useAuth();
   const [badges, setBadges] = useState({});
   useEffect(() => {
     if (!profile?.uid || (role !== "student" && role !== "coach")) { setBadges({}); return; }
     const q = role === "student" ? { studentUid: profile.uid } : { coachId: profile.uid };
-    fetchSessions(q).then(list => {
+    Promise.all([fetchSessions(q), role === "coach" ? fetchJourneys() : Promise.resolve([])]).then(([list, js]) => {
       const future = list.filter(s => !isPast(s));
       setBadges(role === "student"
         ? { courses: future.filter(s => s.status === "pending").length }
-        : { assign:  future.filter(s => s.status === "reschedule").length });
+        : { assign:  future.filter(s => s.status === "reschedule").length,
+            home:    js.reduce((n, j) => n + pendingClaims(j).length, 0) });
     }).catch(() => {});
   }, [profile?.uid, role, sTab, cTab, modal]);
 
@@ -3641,9 +3809,32 @@ export default function App() {
             <span className="header-logo-text">iSTAR <span>Alliance</span></span>
           </div>
           <div className="header-right">
-            <span className={"role-badge " + (ROLE_CLASS[role] || "student")}>
-              {ROLE_LABELS[role] || "STUDENT"}
-            </span>
+            {roles.length > 1 ? (
+              <div style={{ position:"relative" }}>
+                <button className={"role-badge role-switch " + (ROLE_CLASS[role] || "student")} onClick={() => setRoleMenu(v => !v)} aria-label="切換身分">
+                  {ROLE_LABELS[role]} ▾
+                </button>
+                {roleMenu && (
+                  <>
+                    <div style={{ position:"fixed", inset:0, zIndex:60 }} onClick={() => setRoleMenu(false)} />
+                    <div className="role-menu">
+                      <div className="role-menu-h">切換身分</div>
+                      {roles.map(r => (
+                        <button key={r} className={"role-menu-item" + (r === role ? " on" : "")}
+                          onClick={() => { switchRole(r); setRoleMenu(false); setSTab("home"); setCTab("home"); setATab("home"); }}>
+                          <span>{{ admin:"⚙ 管理員", coach:"🎓 教練", student:"✦ 學員" }[r]}</span>
+                          {r === role && <span>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <span className={"role-badge " + (ROLE_CLASS[role] || "student")}>
+                {ROLE_LABELS[role] || "STUDENT"}
+              </span>
+            )}
             <span style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>{displayName}</span>
             <button className="logout-btn" onClick={logout}>登出</button>
           </div>

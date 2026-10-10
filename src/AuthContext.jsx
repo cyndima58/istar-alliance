@@ -12,6 +12,8 @@ import {
   writeBatch, runTransaction,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
+import { normalizeCourse, initialJourney, advanceUpdate, setStageUpdate, mKey } from "./journey";
+import { todayStr } from "./schedule";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
@@ -35,10 +37,18 @@ const getSecondaryAuth = () => {
 ════════════════════════════════════════ */
 const AuthContext = createContext(null);
 
+const ROLE_ORDER = ["admin", "coach", "student"];
+// 相容舊資料：只有 role 欄位的帳號視為單一身分
+export function rolesOf(u) {
+  const list = Array.isArray(u?.roles) && u.roles.length ? u.roles : (u?.role ? [u.role] : []);
+  return ROLE_ORDER.filter(r => list.includes(r));
+}
+
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [profile, setProfile] = useState(null);
-  const [role,    setRole]    = useState(null);   // "admin" | "coach" | "student"
+  const [role,    setRole]    = useState(null);   // 目前使用中的身分 "admin" | "coach" | "student"
+  const [roles,   setRoles]   = useState([]);     // 這個帳號擁有的所有身分
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
 
@@ -49,19 +59,30 @@ export function AuthProvider({ children }) {
         const snap = await getDoc(doc(db, "users", u.uid));
         if (snap.exists()) {
           const data = snap.data();
-          setProfile({ uid: u.uid, ...data });
-          setRole(data.role || null);
+          const list = rolesOf(data);
+          let saved = "";
+          try { saved = localStorage.getItem("istar.activeRole." + u.uid) || ""; } catch {}
+          setProfile({ uid: u.uid, ...data, courseType: normalizeCourse(data.courseType) });
+          setRoles(list);
+          setRole(list.includes(saved) ? saved : (list[0] || null));
         } else {
-          setProfile(null); setRole(null);
+          setProfile(null); setRole(null); setRoles([]);
         }
         setUser(u);
       } else {
-        setUser(null); setProfile(null); setRole(null);
+        setUser(null); setProfile(null); setRole(null); setRoles([]);
       }
       setLoading(false);
     });
     return () => unsub();
   }, []);
+
+  // 一個帳號可以同時是管理員＋教練，切換後介面跟著改變
+  const switchRole = (r) => {
+    if (!roles.includes(r)) return;
+    setRole(r);
+    try { localStorage.setItem("istar.activeRole." + auth.currentUser?.uid, r); } catch {}
+  };
 
   /* ── 登入 ── */
   const loginWithEmail = async (email, password) => {
@@ -87,7 +108,9 @@ export function AuthProvider({ children }) {
      成員管理（管理員）
   ════════════════════════════════════════ */
   const addMember = async (formData) => {
-    const { name, email, password, role: r, birthdate, coachName, courseType, joinDate } = formData;
+    const { name, email, password, birthdate, coachName, courseType, joinDate } = formData;
+    const list = rolesOf({ roles: formData.roles, role: formData.role });
+    const r = list[0];
     try {
       const sa  = getSecondaryAuth();
       const cred = await createUserWithEmailAndPassword(sa, email.trim().toLowerCase(), password);
@@ -95,7 +118,7 @@ export function AuthProvider({ children }) {
       await signOut(sa);
       const data = {
         name, email: email.trim().toLowerCase(),
-        role: r, isAdmin: r === "admin",
+        role: r, roles: list, isAdmin: list.includes("admin"),
         createdAt: serverTimestamp(), status: "active",
       };
       if (r === "student") {
@@ -105,6 +128,10 @@ export function AuthProvider({ children }) {
         data.joinDate   = joinDate   || "";
       }
       await setDoc(doc(db, "users", uid), data);
+      // 學員一建立就開通成長路徑
+      if (r === "student") {
+        await setDoc(doc(db, "journeys", uid), { ...initialJourney({ uid, name, courseType }), updatedAt: serverTimestamp() });
+      }
       return { success: true };
     } catch (e) {
       const msg = {
@@ -119,12 +146,23 @@ export function AuthProvider({ children }) {
   const fetchMembers = async () => {
     try {
       const snap = await getDocs(query(collection(db, "users"), where("role", "in", ["admin","coach","student"])));
-      return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+      return snap.docs.map(d => {
+        const data = d.data();
+        return { uid: d.id, ...data, roles: rolesOf(data), courseType: normalizeCourse(data.courseType) };
+      });
     } catch { return []; }
   };
 
   const updateMember = async (uid, data) => {
-    try { await setDoc(doc(db, "users", uid), data, { merge: true }); return { success: true }; }
+    try {
+      const patch = { ...data };
+      if (Array.isArray(data.roles)) {
+        const list = rolesOf({ roles: data.roles });
+        patch.roles = list; patch.role = list[0]; patch.isAdmin = list.includes("admin");
+      }
+      await setDoc(doc(db, "users", uid), patch, { merge: true });
+      return { success: true };
+    }
     catch (e) { return { success: false, error: e.message }; }
   };
 
@@ -318,19 +356,65 @@ export function AuthProvider({ children }) {
   /* ════════════════════════════════════════
      課程學習資料（模組子集合）
   ════════════════════════════════════════ */
+  const resCol = (moduleId) => collection(db, "modules", moduleId, "resources");
+  const resDoc = (moduleId, id) => doc(db, "modules", moduleId, "resources", id);
+
   const addModuleResource = async (moduleId, resource) => {
     try {
-      await addDoc(collection(db, "modules", moduleId, "resources"), {
-        ...resource, addedBy: profile?.name || "", addedRole: role || "",
-        createdAt: serverTimestamp(),
+      const ref = await addDoc(resCol(moduleId), {
+        ...resource, addedBy: profile?.name || "", addedByUid: auth.currentUser?.uid || "",
+        addedRole: role || "", order: Date.now(), createdAt: serverTimestamp(),
       });
-      return { success: true };
+      return { success: true, id: ref.id };
     } catch (e) { return { success: false, error: e.message }; }
   };
 
-  const deleteModuleResource = async (moduleId, resourceId) => {
-    try { await deleteDoc(doc(db, "modules", moduleId, "resources", resourceId)); return { success: true }; }
+  /*
+   * 檔案／圖片：免費方案無法使用 Firebase Storage，改把檔案切成約 700KB 的區塊
+   * 存在 modules/{m}/resources/{r}/chunks/{i}。資源本身只存名稱、大小、縮圖。
+   */
+  const CHUNK = 700 * 1024;
+  const uploadModuleFile = async (moduleId, { name, mime, size, dataUrl, thumb, kind }, onProgress) => {
+    try {
+      const b64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+      const parts = Math.ceil(b64.length / CHUNK);
+      const ref = doc(resCol(moduleId));
+      // 先寫區塊，最後才寫資源本體 → 清單上不會出現傳到一半的檔案
+      for (let i = 0; i < parts; i++) {
+        await setDoc(doc(db, "modules", moduleId, "resources", ref.id, "chunks", String(i)), {
+          i, data: b64.slice(i * CHUNK, (i + 1) * CHUNK), addedByUid: auth.currentUser?.uid || "",
+        });
+        onProgress?.((i + 1) / (parts + 1));
+      }
+      await setDoc(ref, {
+        type: kind, name, mime, size, parts, thumb: thumb || "",
+        addedBy: profile?.name || "", addedByUid: auth.currentUser?.uid || "",
+        addedRole: role || "", order: Date.now(), createdAt: serverTimestamp(),
+      });
+      onProgress?.(1);
+      return { success: true, id: ref.id };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  // 讀回完整檔案，回傳 data URL
+  const fetchResourceFile = async (moduleId, r) => {
+    const snap = await getDocs(collection(db, "modules", moduleId, "resources", r.id, "chunks"));
+    const b64 = snap.docs.map(d => d.data()).sort((a, b) => a.i - b.i).map(c => c.data).join("");
+    return `data:${r.mime || "application/octet-stream"};base64,${b64}`;
+  };
+
+  const updateModuleResource = async (moduleId, id, data) => {
+    try { await updateDoc(resDoc(moduleId, id), data); return { success: true }; }
     catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const deleteModuleResource = async (moduleId, resourceId, parts = 0) => {
+    try {
+      // 先刪區塊，再刪資源本體（規則會讀資源本體確認刪除權限）
+      for (let i = 0; i < parts; i++) await deleteDoc(doc(db, "modules", moduleId, "resources", resourceId, "chunks", String(i)));
+      await deleteDoc(resDoc(moduleId, resourceId));
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
   /* ════════════════════════════════════════
@@ -434,20 +518,96 @@ export function AuthProvider({ children }) {
 
   const fetchModuleResources = async (moduleId) => {
     try {
-      const snap = await getDocs(collection(db, "modules", moduleId, "resources"));
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const snap = await getDocs(resCol(moduleId));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.order ?? a.createdAt?.seconds ?? 0) - (b.order ?? b.createdAt?.seconds ?? 0));
     } catch { return []; }
+  };
+
+  /* ════════════════════════════════════════
+     成長路徑（journeys/{studentUid}）
+  ════════════════════════════════════════ */
+  const jDoc = (uid) => doc(db, "journeys", uid);
+
+  const fetchJourney = async (uid) => {
+    try { const snap = await getDoc(jDoc(uid)); return snap.exists() ? { id: snap.id, ...snap.data() } : null; }
+    catch { return null; }
+  };
+
+  const fetchJourneys = async () => {
+    try { const snap = await getDocs(collection(db, "journeys")); return snap.docs.map(d => ({ id: d.id, ...d.data() })); }
+    catch { return []; }
+  };
+
+  // 教練／管理員：幫還沒有成長紀錄的學員建立（舊學員自動補齊）
+  const ensureJourneys = async (students) => {
+    const existing = await fetchJourneys();
+    const have = new Set(existing.map(j => j.id));
+    const created = [];
+    for (const st of students) {
+      if (have.has(st.uid)) continue;
+      const j = { ...initialJourney(st), updatedAt: serverTimestamp() };
+      try { await setDoc(jDoc(st.uid), j); created.push({ id: st.uid, ...j }); } catch {}
+    }
+    return [...existing, ...created];
+  };
+
+  // 學員回報完成（附成果）
+  const claimMilestone = async (n, i, note, link) => {
+    try {
+      await updateDoc(jDoc(auth.currentUser.uid), {
+        [`claims.${mKey(n, i)}`]: { note: note || "", link: link || "", at: todayStr() },
+        updatedAt: serverTimestamp(),
+      });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const unclaimMilestone = async (n, i) => {
+    try {
+      await updateDoc(jDoc(auth.currentUser.uid), { [`claims.${mKey(n, i)}`]: deleteField(), updatedAt: serverTimestamp() });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  // 教練確認／取消確認
+  const verifyMilestone = async (uid, n, i, ok = true) => {
+    try {
+      await updateDoc(jDoc(uid), {
+        [`verified.${mKey(n, i)}`]: ok ? { by: profile?.name || "", at: todayStr() } : deleteField(),
+        updatedAt: serverTimestamp(),
+      });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const advanceStage = async (uid, j) => {
+    try { await updateDoc(jDoc(uid), { ...advanceUpdate(j), updatedAt: serverTimestamp() }); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const setJourneyStage = async (uid, j, target) => {
+    try { await updateDoc(jDoc(uid), { ...setStageUpdate(j, target), updatedAt: serverTimestamp() }); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const setStageNote = async (uid, n, text) => {
+    try { await updateDoc(jDoc(uid), { [`coachNote.${n}`]: text, updatedAt: serverTimestamp() }); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
   };
 
   return (
     <AuthContext.Provider value={{
-      user, profile, role, loading, error, setError,
+      user, profile, role, roles, switchRole, loading, error, setError,
       loginWithEmail, logout,
       /* 成員 */ addMember, fetchMembers, updateMember, deleteMember,
       /* 模組 */ addModule, fetchModules, reviewModule, updateModule, deleteModule,
       /* 分配 */ saveAssignment, fetchAssignment,
       /* 記錄 */ addRecord, fetchRecords, updateRecord, deleteRecord,
       /* 資料 */ addModuleResource, fetchModuleResources, deleteModuleResource,
+                 uploadModuleFile, fetchResourceFile, updateModuleResource,
+      /* 路徑 */ fetchJourney, fetchJourneys, ensureJourneys, claimMilestone, unclaimMilestone,
+                 verifyMilestone, advanceStage, setJourneyStage, setStageNote,
       /* 排課 */ addSessions, updateSession, deleteSession, fetchSessions,
                  confirmSession, requestReschedule, bookOpenSession,
       /* 反饋 */ addFeedback, fetchFeedbacks,
