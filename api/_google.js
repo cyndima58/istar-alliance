@@ -8,6 +8,24 @@ import crypto from "node:crypto";
 export const DEFAULT_API_KEY = "AIzaSyAr_FH3cyWmcHFW4icnhzUd1TaPC9gERaI";
 const SCOPES = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging";
 
+/* 解析金鑰 JSON：容許外層多包引號、或複製時字串裡的換行被變成真的換行 */
+export function parseServiceAccount(raw) {
+  let t = String(raw || "").trim().replace(/^\uFEFF/, "");
+  if (/^['"]/.test(t) && /['"]$/.test(t)) t = t.slice(1, -1);
+  try { return JSON.parse(t); } catch {}
+  // 把字串內的真實換行改回 \n（字串外的換行保留）
+  let out = "", inStr = false, esc = false;
+  for (const ch of t.replace(/\r/g, "")) {
+    if (inStr) {
+      if (esc) { esc = false; out += ch; continue; }
+      if (ch === "\\") { esc = true; out += ch; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      out += ch === "\n" ? "\\n" : ch;
+    } else { if (ch === '"') inStr = true; out += ch; }
+  }
+  return JSON.parse(out);
+}
+
 /* 只回報設定狀態，不會洩漏任何金鑰內容 */
 export function serviceAccountStatus(env = process.env) {
   const raw = env.FIREBASE_SERVICE_ACCOUNT;
@@ -16,7 +34,7 @@ export function serviceAccountStatus(env = process.env) {
     return { ok: false, reason: "missing", similarNames: near };
   }
   let sa;
-  try { sa = JSON.parse(raw.trim().replace(/^['"]|['"]$/g, "")); } catch { return { ok: false, reason: "invalid_json", length: raw.length, startsWith: raw.trim().slice(0, 1) }; }
+  try { sa = parseServiceAccount(raw); } catch { const t = raw.trim(); return { ok: false, reason: "invalid_json", length: t.length, startsWith: t.slice(0, 1), endsWith: t.slice(-1) }; }
   const missing = ["project_id", "client_email", "private_key"].filter(k => !sa[k]);
   if (missing.length) return { ok: false, reason: "missing_fields", missing };
   return { ok: true, project: sa.project_id };
@@ -26,7 +44,7 @@ export function loadServiceAccount(env = process.env) {
   const raw = env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) return null;
   try {
-    const sa = JSON.parse(raw.trim().replace(/^['"]|['"]$/g, ""));
+    const sa = parseServiceAccount(raw);
     if (!sa.private_key || !sa.client_email || !sa.project_id) return null;
     sa.private_key = sa.private_key.replace(/\\n/g, "\n");
     return sa;

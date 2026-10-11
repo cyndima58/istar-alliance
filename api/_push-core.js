@@ -91,7 +91,7 @@ export async function handleNotify(req, { env = process.env, fetch: fetchImpl = 
   // GET：讓 App 知道伺服器是否已設定好，可以發通知（沒設定就不邀請成員開啟）
   if (req.method === "GET") {
     const st = serviceAccountStatus(env);
-    return out(200, st.ok ? { configured: true } : { configured: false, reason: st.reason, ...(st.missing ? { missing: st.missing } : {}), ...(st.similarNames?.length ? { similarNames: st.similarNames } : {}), ...(st.startsWith ? { startsWith: st.startsWith } : {}) });
+    return out(200, st.ok ? { configured: true } : { configured: false, reason: st.reason, ...(st.missing ? { missing: st.missing } : {}), ...(st.similarNames?.length ? { similarNames: st.similarNames } : {}), ...(st.startsWith ? { startsWith: st.startsWith, endsWith: st.endsWith, length: st.length } : {}) });
   }
   if (req.method !== "POST") return out(405, { error: "method_not_allowed" });
   const sa = loadServiceAccount(env);
