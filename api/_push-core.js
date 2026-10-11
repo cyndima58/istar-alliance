@@ -5,7 +5,7 @@
  * 收件人與通知內容一律由伺服器讀資料庫決定，並檢查呼叫者確實是這件事的當事人，
  * 所以無法被拿來亂發通知。
  */
-import { loadServiceAccount, getAccessToken, verifyCaller, fsGet, fsList, fsWhere, fsPatch, fsDelete } from "./_google.js";
+import { loadServiceAccount, serviceAccountStatus, getAccessToken, verifyCaller, fsGet, fsList, fsWhere, fsPatch, fsDelete } from "./_google.js";
 
 const out = (status, json) => ({ status, json });
 const fmtDate = (d) => { const [y, m, dd] = (d || "").split("-").map(Number); if (!m) return ""; const w = "日一二三四五六"[new Date(Date.UTC(y, m - 1, dd)).getUTCDay()]; return `${m}/${dd}（${w}）`; };
@@ -89,7 +89,10 @@ export async function plan(type, body, callerUid, ctx) {
 
 export async function handleNotify(req, { env = process.env, fetch: fetchImpl = fetch } = {}) {
   // GET：讓 App 知道伺服器是否已設定好，可以發通知（沒設定就不邀請成員開啟）
-  if (req.method === "GET") return out(200, { configured: !!loadServiceAccount(env) });
+  if (req.method === "GET") {
+    const st = serviceAccountStatus(env);
+    return out(200, st.ok ? { configured: true } : { configured: false, reason: st.reason, ...(st.missing ? { missing: st.missing } : {}), ...(st.similarNames?.length ? { similarNames: st.similarNames } : {}), ...(st.startsWith ? { startsWith: st.startsWith } : {}) });
+  }
   if (req.method !== "POST") return out(405, { error: "method_not_allowed" });
   const sa = loadServiceAccount(env);
   if (!sa) return out(503, { error: "not_configured" });

@@ -8,11 +8,25 @@ import crypto from "node:crypto";
 export const DEFAULT_API_KEY = "AIzaSyAr_FH3cyWmcHFW4icnhzUd1TaPC9gERaI";
 const SCOPES = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging";
 
+/* 只回報設定狀態，不會洩漏任何金鑰內容 */
+export function serviceAccountStatus(env = process.env) {
+  const raw = env.FIREBASE_SERVICE_ACCOUNT;
+  if (!raw) {
+    const near = Object.keys(env).filter(k => /FIREBASE|SERVICE/i.test(k) && k !== "FIREBASE_SERVICE_ACCOUNT");
+    return { ok: false, reason: "missing", similarNames: near };
+  }
+  let sa;
+  try { sa = JSON.parse(raw.trim().replace(/^['"]|['"]$/g, "")); } catch { return { ok: false, reason: "invalid_json", length: raw.length, startsWith: raw.trim().slice(0, 1) }; }
+  const missing = ["project_id", "client_email", "private_key"].filter(k => !sa[k]);
+  if (missing.length) return { ok: false, reason: "missing_fields", missing };
+  return { ok: true, project: sa.project_id };
+}
+
 export function loadServiceAccount(env = process.env) {
   const raw = env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) return null;
   try {
-    const sa = JSON.parse(raw);
+    const sa = JSON.parse(raw.trim().replace(/^['"]|['"]$/g, ""));
     if (!sa.private_key || !sa.client_email || !sa.project_id) return null;
     sa.private_key = sa.private_key.replace(/\\n/g, "\n");
     return sa;
