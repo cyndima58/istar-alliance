@@ -2108,7 +2108,12 @@ function AttendancePanel({ s, viewer, onUpdated, onWriteRecord }) {
           <div className="input-label" style={{ marginTop:14 }}>課堂摘要（選填，學員看得到）</div>
           <textarea className="input-field" rows={2} placeholder="例：完成定位一頁紙初稿，下次討論受眾輪廓" value={summary} onChange={e => setSummary(e.target.value)} />
           <button className="btn btn-primary btn-lg" style={{ width:"100%" }} disabled={!!busy || photos.length === 0}
-            onClick={() => act("out", () => checkOutSession(s.id, summary.trim()), "已簽退，課程完成交付 ✓")}>
+            onClick={async () => {
+              const text = summary.trim();
+              const ok = await act("out", () => checkOutSession(s.id, text), "已簽退，課程完成交付 ✓");
+              // 簽退完成後直接接著寫上課記錄，剛才的摘要預先帶入回饋欄
+              if (ok && onWriteRecord && !s.recorded) onWriteRecord({ ...s, checkOut: { ...(s.checkOut || {}), summary: text } });
+            }}>
             {busy === "out" ? "簽退中…" : "簽退，完成這堂課"}
           </button>
           {photos.length === 0 && <div className="hint">請先上傳至少 1 張上課照片或線上截圖，才能簽退。</div>}
@@ -3146,7 +3151,7 @@ function CHome({ onSwitch, onModal }) {
   const writeRecord = (s) => {
     setSheet(null);
     onModal?.("record", () => { updateSession(s.id, { recorded: true }).then(() => { setToast("上課記錄已儲存 ✓"); setSRefresh(r => r + 1); }); }, {
-      prefill: { studentUid: s.studentUid, studentName: s.studentName, date: s.date, topic: s.moduleTitle || "一對一課程", sessionId: s.id },
+      prefill: { studentUid: s.studentUid, studentName: s.studentName, date: s.date, topic: s.moduleTitle || "一對一課程", feedback: s.checkOut?.summary || "", sessionId: s.id },
     });
   };
 
@@ -3700,7 +3705,7 @@ function CSchedule({ onSwitch, onModal }) {
   const writeRecord = (s) => {
     setSheet(null);
     onModal("record", () => { updateSession(s.id, { recorded: true }).then(() => done("上課記錄已儲存 ✓")); }, {
-      prefill: { studentUid: s.studentUid, studentName: s.studentName, date: s.date, topic: s.moduleTitle || "一對一課程", sessionId: s.id },
+      prefill: { studentUid: s.studentUid, studentName: s.studentName, date: s.date, topic: s.moduleTitle || "一對一課程", feedback: s.checkOut?.summary || "", sessionId: s.id },
     });
   };
 
@@ -3790,7 +3795,7 @@ function CSchedule({ onSwitch, onModal }) {
 }
 
 function CRecords({ onSwitch, onModal }) {
-  const { profile, fetchRecords, deleteRecord, fetchSessions } = useAuth();
+  const { profile, fetchRecords, deleteRecord, fetchSessions, updateSession } = useAuth();
   const [tab,        setTab]        = useState("records");
   const [sessions,   setSessions]   = useState([]);
   const [sheet,      setSheet]      = useState(null);
@@ -3885,7 +3890,9 @@ function CRecords({ onSwitch, onModal }) {
           ))
         )}
       </div>
-      {sheet && <SessionSheet s={sheet} viewer="coach" onClose={() => setSheet(null)} onChanged={(m) => { if (m) setToast(m); setRefreshKey(k => k + 1); }} />}
+      {sheet && <SessionSheet s={sheet} viewer="coach" onClose={() => setSheet(null)} onChanged={(m) => { if (m) setToast(m); setRefreshKey(k => k + 1); }}
+        onWriteRecord={(x) => { setSheet(null); onModal("record", () => { updateSession(x.id, { recorded: true }).then(() => { setToast("上課記錄已儲存 ✓"); setRefreshKey(k => k + 1); }); }, {
+          prefill: { studentUid: x.studentUid, studentName: x.studentName, date: x.date, topic: x.moduleTitle || "一對一課程", feedback: x.checkOut?.summary || "", sessionId: x.id } }); }} />}
       <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={C_TABS} active="records" onSwitch={onSwitch} />
     </div>
