@@ -91,6 +91,11 @@ export async function handleNotify(req, { env = process.env, fetch: fetchImpl = 
   // GET：讓 App 知道伺服器是否已設定好，可以發通知（沒設定就不邀請成員開啟）
   if (req.method === "GET") {
     const st = serviceAccountStatus(env);
+    // ?check=1：實際向 Google 換一次存取權杖，確認金鑰有效（不讀寫任何資料）
+    if (st.ok && /[?&]check=1/.test(req.url || "")) {
+      try { await getAccessToken(loadServiceAccount(env), fetchImpl); return out(200, { configured: true, googleAuth: "ok", project: st.project }); }
+      catch { return out(200, { configured: true, googleAuth: "failed" }); }
+    }
     return out(200, st.ok ? { configured: true } : { configured: false, reason: st.reason, ...(st.missing ? { missing: st.missing } : {}), ...(st.similarNames?.length ? { similarNames: st.similarNames } : {}), ...(st.startsWith ? { startsWith: st.startsWith, endsWith: st.endsWith, length: st.length, smartQuotes: st.smartQuotes, objects: st.objects, pemKeys: st.pemKeys } : {}) });
   }
   if (req.method !== "POST") return out(405, { error: "method_not_allowed" });
