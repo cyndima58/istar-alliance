@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>App 使用說明｜管理員＆教練｜星辰聯盟 iSTAR Alliance</title>
+<meta name="description" content="星辰聯盟 App（istarallinance_v1.0）管理員與教練完整使用說明：安裝到手機桌面、開啟通知、排課、簽到簽退、上課記錄、成員與財務管理。">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>:root{
+  --ink:#1B1B1E; --slate:#3C3C4E; --gray:#6E6E78; --line:#E2E3EE;
+  --indigo:#4E5AC3; --indigo-d:#343C82; --navy:#1A1E41; --lav:#BCC1EB; --lav2:#979DD7; --mist:#F4F5FC;
+  --gold:#FFCB05; --ok:#169489; --warn:#C0392B;
+  --r:14px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:#fff;color:var(--ink);font-family:"Raleway","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;font-size:17px;line-height:1.75;letter-spacing:.02em}
+a{color:var(--indigo)}
+img,svg{max-width:100%}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+
+/* hero：沿用官網頁首的靛藍色帶 */
+.hero{background:linear-gradient(120deg,var(--indigo) 0%,#5D67CC 45%,var(--indigo-d) 100%);color:#fff;position:relative;overflow:hidden}
+.hero:after{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.16),rgba(255,255,255,0) 70%)}
+.hero .wrap{padding-top:56px;padding-bottom:56px;position:relative;z-index:1}
+.brand{display:flex;align-items:center;gap:12px;font-size:14px;letter-spacing:.18em;opacity:.95}
+.brand svg{width:44px;height:44px;flex:none}
+.hero h1{font-size:clamp(28px,5vw,46px);line-height:1.25;margin:22px 0 10px;font-weight:700;letter-spacing:.04em}
+.hero h1 small{display:block;font-size:.5em;font-weight:500;letter-spacing:.2em;color:var(--lav);margin-bottom:8px}
+.hero p.lead{font-size:clamp(16px,2.2vw,19px);max-width:680px;margin:0 0 26px;color:#EEF0FF}
+.meta{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:26px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.45);border-radius:999px;padding:5px 14px;font-size:14px;letter-spacing:.06em;background:rgba(255,255,255,.08)}
+.chip b{font-weight:700}
+.btn{display:inline-flex;align-items:center;gap:8px;background:#fff;color:var(--indigo-d);text-decoration:none;font-weight:700;padding:13px 24px;border-radius:4px;letter-spacing:.08em;font-size:16px;box-shadow:0 6px 18px rgba(26,30,65,.25)}
+.btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.7);box-shadow:none}
+.btns{display:flex;flex-wrap:wrap;gap:12px}
+
+/* 章節目錄 */
+.toc{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.toc .wrap{display:flex;gap:6px;overflow-x:auto;padding-top:10px;padding-bottom:10px;scrollbar-width:none}
+.toc .wrap::-webkit-scrollbar{display:none}
+.toc a{flex:none;text-decoration:none;color:var(--slate);font-size:15px;padding:6px 14px;border-radius:999px;white-space:nowrap}
+.toc a:hover,.toc a.on{background:var(--mist);color:var(--indigo-d)}
+
+section{padding:64px 0;border-bottom:1px solid var(--line);scroll-margin-top:56px}
+section.alt{background:var(--mist)}
+section.dark{background:var(--slate);color:#fff;border-bottom:0}
+.sec-head{margin-bottom:30px}
+.num{font-family:"Raleway",sans-serif;font-weight:700;color:var(--indigo);font-size:15px;letter-spacing:.2em}
+.dark .num{color:var(--lav)}
+h2{font-size:clamp(24px,3.6vw,32px);margin:6px 0 8px;line-height:1.35;letter-spacing:.04em}
+h3{font-size:20px;margin:0 0 8px;line-height:1.45}
+h4{font-size:17px;margin:18px 0 6px;color:var(--indigo-d)}
+.sub{color:var(--gray);margin:0;max-width:760px}
+.dark .sub{color:#D7D9F2}
+
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:24px;box-shadow:0 2px 10px rgba(26,30,65,.04)}
+.alt .card{border-color:#E4E6F6}
+.card .k{font-weight:700;color:var(--indigo);font-size:14px;letter-spacing:.16em}
+.card p{margin:0 0 8px}
+.card ul,.card ol{margin:6px 0 0;padding-left:1.25em}
+.card li{margin:4px 0}
+.ic{width:46px;height:46px;border-radius:12px;background:var(--mist);display:grid;place-items:center;margin-bottom:14px;color:var(--indigo)}
+.ic svg{width:24px;height:24px}
+.dark .card{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#fff;box-shadow:none}
+.dark .card .ic{background:rgba(188,193,235,.18);color:#fff}
+
+/* 價值主張大數字 */
+.value{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:18px}
+.value .card h3{font-size:19px}
+.value .big{font-size:34px;font-weight:700;color:var(--indigo);line-height:1.1;margin-bottom:8px}
+.dark .value .big{color:var(--lav)}
+
+/* 安裝步驟 */
+.tabs{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px;margin-bottom:22px}
+.tabs button{border:0;background:none;font:inherit;font-size:16px;padding:8px 22px;border-radius:999px;cursor:pointer;color:var(--slate)}
+.tabs button.on{background:var(--indigo);color:#fff}
+.pane{display:none}.pane.on{display:block}
+.steps{counter-reset:s;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+.step{position:relative;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:22px 20px 20px}
+.step:before{counter-increment:s;content:"0" counter(s);font-weight:700;color:var(--indigo);letter-spacing:.14em;font-size:14px}
+.step h3{font-size:18px;margin:6px 0}
+.step p{margin:0;font-size:16px;color:var(--slate)}
+.phone{margin:14px auto 0;width:150px;height:118px;border:2px solid #CFD2EA;border-bottom:0;border-radius:22px 22px 0 0;background:linear-gradient(#FAFAFE,#F0F1FA);position:relative;overflow:hidden}
+.phone .bar{position:absolute;left:0;right:0;bottom:0;height:38px;background:#fff;border-top:1px solid #E3E5F3;display:flex;align-items:center;justify-content:space-around;color:#9AA0C8}
+.phone .bar svg,.phone .top svg{width:20px;height:20px}
+.phone .hl{color:var(--indigo);background:#E8EAFB;border-radius:8px;padding:3px;outline:2px solid var(--indigo);outline-offset:1px}
+.phone .top{position:absolute;left:10px;right:10px;top:14px;height:26px;border-radius:8px;background:#fff;border:1px solid #E3E5F3;display:flex;align-items:center;justify-content:flex-end;padding:0 6px;color:#9AA0C8;font-size:11px}
+.phone .top span{flex:1;color:#8C91B5;padding-left:2px}
+.phone .sheet{position:absolute;left:8px;right:8px;bottom:0;background:#fff;border:1px solid #E3E5F3;border-bottom:0;border-radius:12px 12px 0 0;padding:8px 10px;font-size:12px;color:var(--slate);line-height:1.6}
+.phone .sheet div{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #F0F1F8;padding:2px 0}
+.phone .sheet div.hl2{color:var(--indigo-d);font-weight:700;background:#ECEEFC;border-radius:6px;padding:2px 6px;border:0}
+.phone .home{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;padding:18px 14px}
+.phone .home i{display:block;aspect-ratio:1;border-radius:9px;background:#E3E5F3}
+.phone .home i.me{background:linear-gradient(135deg,var(--indigo),var(--indigo-d));box-shadow:0 0 0 2px #fff,0 0 0 4px var(--indigo)}
+.phone .card2{position:absolute;left:10px;right:10px;top:16px;border-radius:10px;background:#fff;border:1px solid #E3E5F3;padding:8px;font-size:11.5px;line-height:1.5;color:var(--slate)}
+.phone .card2 b{display:block;color:var(--ink)}
+.phone .card2 em{display:inline-block;margin-top:5px;font-style:normal;background:var(--indigo);color:#fff;border-radius:5px;padding:1px 8px}
+
+.note{border-left:4px solid var(--indigo);background:var(--mist);padding:14px 18px;border-radius:0 10px 10px 0;margin:22px 0 0;color:var(--slate)}
+.note.warn{border-color:#E0A800;background:#FFF9E5}
+.note b{color:var(--ink)}
+.alt .note{background:#fff}
+
+/* 通知清單 */
+.ntf{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
+.ntf div{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.ntf .dot{flex:none;width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--indigo),var(--indigo-d));display:grid;place-items:center;color:#fff}
+.ntf .dot svg{width:18px;height:18px}
+.ntf b{display:block;font-size:16px}
+.ntf span{font-size:15px;color:var(--gray);line-height:1.6}
+
+/* 功能章節 */
+.feature{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:30px;padding:30px 0;border-top:1px dashed #D5D8EE}
+.feature:first-of-type{border-top:0;padding-top:0}
+.feature .tag{display:inline-block;background:var(--indigo);color:#fff;font-size:13px;padding:2px 10px;border-radius:4px;letter-spacing:.12em;margin-bottom:10px}
+.feature .tag.coach{background:var(--ok)}
+.feature .tag.admin{background:var(--navy)}
+.feature .side p{color:var(--gray);margin:6px 0 0;font-size:16px}
+.feature .body ul{margin:0;padding-left:1.2em}
+.feature .body li{margin:6px 0}
+.feature .body li b{color:var(--indigo-d)}
+@media(max-width:760px){.feature{grid-template-columns:1fr;gap:12px}}
+
+/* 一天的流程 */
+.flow{position:relative;margin:0;padding:0;list-style:none}
+.flow li{position:relative;padding:0 0 26px 74px}
+.flow li:before{content:"";position:absolute;left:29px;top:8px;bottom:-8px;width:2px;background:rgba(188,193,235,.5)}
+.flow li:last-child:before{display:none}
+.flow time{position:absolute;left:0;top:2px;width:60px;text-align:center;font-weight:700;font-size:14px;background:var(--lav);color:var(--navy);border-radius:999px;padding:2px 0}
+.flow h3{color:#fff;font-size:18px;margin:0 0 4px}
+.flow p{margin:0;color:#D7D9F2;font-size:16px}
+
+/* FAQ */
+details{border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:10px}
+summary{cursor:pointer;list-style:none;padding:16px 48px 16px 20px;font-weight:700;position:relative}
+summary::-webkit-details-marker{display:none}
+summary:after{content:"+";position:absolute;right:20px;top:12px;font-size:24px;color:var(--indigo);font-weight:400}
+details[open] summary:after{content:"−"}
+details>div{padding:0 20px 18px;color:var(--slate)}
+details>div p{margin:0 0 8px}
+
+table{width:100%;border-collapse:collapse;font-size:16px;background:#fff;border-radius:12px;overflow:hidden}
+th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--navy);color:#fff;font-weight:600;letter-spacing:.06em}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+
+.stages{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px}
+.stages div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+.stages b{display:block;color:var(--indigo-d)}
+.stages small{display:block;color:var(--gray);font-size:14px;line-height:1.55}
+.stages i{font-style:normal;font-size:12px;letter-spacing:.14em;color:var(--indigo)}
+
+footer{background:var(--navy);color:#C9CCEB;padding:44px 0;font-size:15px}
+footer b{color:#fff}
+footer a{color:#fff}
+.foot{display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:flex-start}
+.kbd{display:inline-block;border:1px solid #CBD0EE;background:#fff;border-radius:6px;padding:0 7px;font-size:.92em;color:var(--indigo-d);white-space:nowrap}
+.ok{color:var(--ok);font-weight:700}
+@media(max-width:560px){
+  body{font-size:16px}
+  section{padding:48px 0}
+  .card{padding:20px}
+  .hero .wrap{padding-top:40px;padding-bottom:44px}
+  .btn{width:100%;justify-content:center}
+}
+@media print{.toc,.tabs{display:none}.pane{display:block!important}section{break-inside:avoid-page}}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+  <div class="brand"><span style="background:#fff;border-radius:12px;padding:5px;display:inline-flex"><svg style="width:34px;height:34px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M263.5 81.0 L303.0 191.3 L420.1 194.8" fill="none" stroke="#86672C" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="341.8" cy="137.9" r="28" fill="#86672C"/><path d="M424.8 209.1 L332.1 280.7 L364.9 393.2" fill="none" stroke="#3F6E4E" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="394.9" cy="301.1" r="28" fill="#3F6E4E"/><path d="M352.8 402.0 L256.0 336.0 L159.2 402.0" fill="none" stroke="#3A4A6B" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="256.0" cy="402.0" r="28" fill="#3A4A6B"/><path d="M147.1 393.2 L179.9 280.7 L87.2 209.1" fill="none" stroke="#8B3A2A" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="117.1" cy="301.1" r="28" fill="#8B3A2A"/><path d="M91.9 194.8 L209.0 191.3 L248.5 81.0" fill="none" stroke="#B8913F" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="170.2" cy="137.9" r="28" fill="#B8913F"/></svg></span><span>iSTAR ALLIANCE<br>星辰聯盟</span></div>
+  <h1><small>APP GUIDE ・ 管理員＆教練</small>一支手機，帶好每一位學員</h1>
+  <p class="lead">排課、簽到、上課照片、回饋、成長路徑、交付時數與財務，全部集中在星辰聯盟 App。每一堂課都有紀錄、每一份努力都看得見，讓你把時間花在真正重要的事：陪學員成長。</p>
+  <div class="meta">
+    <span class="chip">適用：管理員・教練</span>
+    <span class="chip">版本 <b>istarallinance_v1.0</b></span>
+    <span class="chip">正式上線 <b>2026/10/11</b></span>
+  </div>
+  <div class="btns">
+    <a class="btn" href="https://star.iwillstar.com" target="_blank" rel="noopener">開啟星辰聯盟 App ↗</a>
+    <a class="btn ghost" href="#install">先安裝到手機桌面</a>
+  </div>
+</div></header><nav class="toc" aria-label="章節"><div class="wrap"><a href="#why">為什麼要用</a><a href="#install">安裝到桌面</a><a href="#notify">開啟通知</a><a href="#start">登入與身分</a><a href="#coach">教練功能</a><a href="#admin">管理員功能</a><a href="#day">一天的流程</a><a href="#faq">常見問題</a></div></nav>
+<section id="why"><div class="wrap">
+  <div class="sec-head"><div class="num">01</div><h2>為什麼星辰聯盟需要這個 App</h2>
+  <p class="sub">過去散落在 LINE 群組、Excel、紙本簽到表與記憶裡的資訊，現在只有一個地方。對教練，它是省時間的助理；對管理員，它是看得見全局的儀表板；對學員，它是被好好照顧的證明。</p></div>
+  <div class="value">
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>每一堂課都是可驗證的交付</h3><p>簽到、簽退時間由伺服器自動蓋章，加上上課照片，任何人都無法事後修改。學員、教練、聯盟三方都安心。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>行政時間大幅縮短</h3><p>排課一次排多堂、學員自己在 App 確認或預約；時數報表、分潤試算自動完成，不用再對帳、數表格。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div><h3>重要的事，手機會主動告訴你</h3><p>學員確認時間、要求改期、到教室簽到、回報里程碑、分潤已匯款……不用一直開 App 檢查。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/></svg></div><h3>學員的成長，有清楚的路線</h3><p>9 階段成長路徑把「探索」到「共創」的每個里程碑具體化。學員知道下一步，教練知道該在哪裡推一把。</p></div>
+  </div>
+</div></section>
+<section id="install" class="alt"><div class="wrap">
+  <div class="sec-head"><div class="num">02</div>
+    <h2>把 App 放到手機桌面：30 秒完成</h2>
+    <p class="sub">星辰聯盟 App 不需要到 App Store 或 Google Play 下載。用手機瀏覽器打開 <b>star.iwillstar.com</b>，加入主畫面後，它就會像一般 App 一樣有自己的圖示、全螢幕開啟，還能收到手機通知。</p>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="on" data-pane="ios" role="tab">iPhone／iPad</button>
+    <button data-pane="android" role="tab">Android 安卓</button>
+  </div>
+
+  <div class="pane on" id="pane-ios">
+    <div class="steps">
+      <div class="step"><h3>用 Safari 打開網址</h3><p>一定要用 iPhone 內建的 <b>Safari</b>（LINE、Facebook 內建的瀏覽器無法加入主畫面）。在網址列輸入 <span class="kbd">star.iwillstar.com</span>。</p>
+        <div class="phone"><div class="top"><span>star.iwillstar.com</span></div><div class="bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M8 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></div></div></div>
+      <div class="step"><h3>點「分享」按鈕</h3><p>畫面下方（iPad 在右上方）中間那個<b>方框加向上箭頭</b>的圖示。</p>
+        <div class="phone"><div class="top"><span>star.iwillstar.com</span></div><div class="bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><span class="hl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M8 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2"/></svg></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></div></div></div>
+      <div class="step"><h3>選「加入主畫面」</h3><p>在分享選單往下滑，找到 <span class="kbd">加入主畫面</span>（圖示是方框裡一個＋號）。</p>
+        <div class="phone"><div class="sheet"><div>拷貝 <span>⧉</span></div><div>加入書籤 <span>☆</span></div><div class="hl2">加入主畫面 <span>⊞</span></div></div></div></div>
+      <div class="step"><h3>按「新增」，從桌面開啟</h3><p>右上角按 <span class="kbd">新增</span>。之後請一律<b>點桌面上的星辰聯盟圖示</b>開啟，才能使用通知功能。</p>
+        <div class="phone"><div class="home"><i></i><i></i><i class="me"></i><i></i><i></i><i></i><i></i><i></i></div></div></div>
+    </div>
+    <p class="note"><b>iPhone 小提醒：</b>手機通知需要 <b>iOS 16.4 以上</b>（設定 → 一般 → 關於本機 → iOS 版本）。在 Safari 網頁裡無法開通知，必須從主畫面圖示開啟 App 後才能開啟。</p>
+  </div>
+
+  <div class="pane" id="pane-android">
+    <div class="steps">
+      <div class="step"><h3>用 Chrome 打開網址</h3><p>使用 <b>Chrome</b> 瀏覽器，在網址列輸入 <span class="kbd">star.iwillstar.com</span>。</p>
+        <div class="phone"><div class="top"><span>star.iwillstar.com</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg></div></div></div>
+      <div class="step"><h3>點右上角「⋮」選單</h3><p>網址列右邊的<b>三個點</b>。有些手機會直接跳出「安裝應用程式」提示，點它也可以。</p>
+        <div class="phone"><div class="top"><span>star.iwillstar.com</span><span class="hl" style="flex:none;padding:1px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg></span></div></div></div>
+      <div class="step"><h3>選「安裝應用程式」</h3><p>選單中的 <span class="kbd">安裝應用程式</span> 或 <span class="kbd">加到主畫面</span>（不同手機用語略有不同），再按「安裝」。</p>
+        <div class="phone"><div class="sheet"><div>新增分頁</div><div>書籤</div><div class="hl2">安裝應用程式</div><div>分享…</div></div></div></div>
+      <div class="step"><h3>從桌面或應用程式列表開啟</h3><p>桌面會出現星辰聯盟圖示，之後直接點圖示即可，跟一般 App 一樣。</p>
+        <div class="phone"><div class="home"><i></i><i class="me"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></div>
+    </div>
+    <p class="note"><b>Samsung 手機：</b>如果用的是 Samsung Internet 瀏覽器，點右下角「≡」→「新增頁面至」→「主畫面」。電腦版 Chrome／Edge 也可以在網址列右側點「安裝」圖示，把 App 裝在電腦上。</p>
+  </div>
+</div></section>
+<section id="notify"><div class="wrap">
+  <div class="sec-head"><div class="num">03</div><h2>開啟手機通知：別錯過任何一位學員的訊息</h2>
+  <p class="sub">開啟後，就算沒有打開 App，手機也會像收到 LINE 訊息一樣跳出通知。點一下通知，就會直接帶你到要處理的頁面。</p></div>
+  
+  <div class="grid g3" style="margin-bottom:26px">
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></div><div class="k">STEP 1</div><h3>從桌面圖示開啟 App 並登入</h3><p>iPhone 一定要從主畫面圖示開啟；Android 用 Chrome 或已安裝的 App 都可以。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div><div class="k">STEP 2</div><h3>點「開啟手機通知」</h3><p>首頁上方會出現 <span class="kbd">開啟手機通知</span> 卡片，直接點它。如果已經關掉卡片，也可以點右上角 <span class="kbd">Aa</span> 選單裡的「手機通知」開關。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div><div class="k">STEP 3</div><h3>在系統視窗按「允許」</h3><p>手機跳出詢問時請按 <b>允許</b>。幾秒內你會收到一則「<b>通知已開啟 ✓</b>」測試通知，代表設定成功。</p></div>
+  </div>
+  <p class="note warn"><b>不小心按到「不允許」？</b>　iPhone：設定 → 通知 → 找到「星辰聯盟」→ 開啟「允許通知」。　Android：長按桌面的星辰聯盟圖示 → 應用程式資訊 → 通知 → 開啟。設定好後回到 App，重新點一次「開啟手機通知」。<br>每一支手機要各自開啟一次；換手機或重新安裝後，也要再開一次。</p>
+  <h3 style="margin:36px 0 14px">你會收到的通知</h3>
+  <div class="ntf"><div><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><p style="margin:0"><b>每天早上 8:00「今天有 N 堂課」</b><span>當天的上課時間與學員一目了然，出門前就準備好。</span></p></div><div><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span><p style="margin:0"><b>學員確認了上課時間／預約了你的開放時段</b><span>學員在 App 按下確認或預約，你馬上知道。</span></p></div><div><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><p style="margin:0"><b>學員請求改期</b><span>附上學員留言，請到「排課」頁調整時間。</span></p></div><div><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span><p style="margin:0"><b>學員已簽到</b><span>學員到教室（或進入線上教室）按下「我到了」，你會收到通知。</span></p></div><div><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span><p style="margin:0"><b>學員回報完成里程碑</b><span>請到「總覽」確認，學員會收到「教練確認了你的里程碑 ✓」。</span></p></div><div><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.7-1.5-3-1.5-1.7 0-3 .9-3 2s1.2 1.7 3 2 3 .9 3 2-1.3 2-3 2c-1.3 0-2.5-.5-3-1.5M12 6.5v11"/></svg></span><p style="margin:0"><b>分潤已匯款</b><span>管理員標記已匯款後，你會收到金額與匯款日期。</span></p></div><div><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/></svg></span><p style="margin:0"><b>有新帳號等待開通（管理員）</b><span>有人登入但還不是成員時送出申請，管理員可立即開通。</span></p></div></div>
+</div></section>
+<section id="start" class="alt"><div class="wrap">
+  <div class="sec-head"><div class="num">04</div><h2>登入、身分切換與閱讀設定</h2></div>
+  <div class="grid g3">
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg></div><h3>登入</h3><p>使用管理員建立的 <b>Email 與密碼</b>登入。可按「顯示密碼」確認有沒有打錯。</p><p>忘記密碼：在登入頁先填 Email，再按 <span class="kbd">忘記密碼？寄送重設信</span>，到信箱（含垃圾郵件匣）收信重設。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/></svg></div><h3>一個帳號，多種身分</h3><p>同一位夥伴可以<b>同時是教練與管理員</b>。登入後在右上角切換身分，就能在「教練畫面」與「管理員畫面」之間切換，不用登出。</p><p style="color:var(--gray);font-size:15px">學員身分則獨立，不會與教練、管理員混用。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h10v2M9 5v14M7 19h4"/><path d="M14 12v-1h7v1M17.5 11v8M16 19h3"/></svg></div><h3>字太小？一鍵放大</h3><p>右上角 <span class="kbd">Aa</span> 可選「標準／大／特大」三種字級，設定會記在這支手機上。手機通知的開關也在這個選單裡。</p></div>
+  </div>
+</div></section>
+<section id="coach"><div class="wrap">
+  <div class="sec-head"><div class="num">05</div><h2>教練功能詳解</h2>
+  <p class="sub">教練畫面下方有四個分頁：<b>總覽、模組、排課、記錄</b>。最需要你處理的事，永遠排在最上面。</p></div>
+  <div class="feature"><div class="side"><span class="tag coach">總覽</span><h3>今天要做什麼，打開就知道</h3><p>今天的課、需要關注的學員、學員回報與反饋，集中在第一頁。</p></div><div class="body"><ul><li><b>今天的課：</b>列出今天每一堂課，簽到、上傳照片、簽退都從這裡進入。</li><li><b>待補提醒：</b>已上完卻還沒簽退、或學員未簽到的課會以醒目提示列出，避免漏掉交付紀錄。</li><li><b>需要關注：</b>尚未分配課程模組的學員、等你確認的里程碑回報，一眼看到。</li><li><b>近期課表與學員反饋：</b>最近排定的課、待學員確認／請求改期的數量，以及學員最新寫給你的反饋。</li></ul></div></div>
+  <div class="feature"><div class="side"><span class="tag coach">模組</span><h3>建立你的課程模組與學習資料</h3><p>每一套課程就是一個模組，學員看到的內容與順序都由你決定。</p></div><div class="body"><ul><li><b>新增模組：</b>填寫課程名稱、說明與所屬階段，建立後直接加入學習資料（檔案、連結、講義）。</li><li><b>依教練分組、可收合：</b>點教練名字即可展開或收合該教練的所有模組，課程再多也不會亂。</li><li><b>手動排序：</b>按「排序」調整模組順序並儲存，學員看到的順序會同步更新。</li><li><b>分配給學員：</b>在「排課」頁的「課程分配」選擇學員，點選模組加入他的專屬課程。其他教練分配的模組會被保留，不會互相覆蓋。</li></ul></div></div>
+  <div class="feature"><div class="side"><span class="tag coach">排課</span><h3>行事曆排課，學員在 App 裡確認</h3><p>月曆檢視所有課程；一次可排多堂，學員會收到通知。</p></div><div class="body"><ul><li><b>兩種排課方式：</b>直接排給指定學員（狀態「待確認」，學員按確認即完成），或開放時段讓學員自行預約。</li><li><b>上課方式：</b>可設定現場地點或線上教室連結；線上課學員可直接點「進入線上教室」。</li><li><b>狀態篩選：</b>全部／待確認／已排定／請求改期，同時就是統計數字；改期請求會排在最前面。</li><li><b>異動與取消：</b>修改時間或取消課程時，學員會自動收到通知。已簽到的課屬於交付證據，只有管理員能刪除。</li></ul></div></div>
+  <div class="feature"><div class="side"><span class="tag coach">簽到・照片・簽退</span><h3>讓每一堂課都成為完整的交付紀錄</h3><p>這是 App 最重要的流程，請每堂課都完成。</p></div><div class="body"><ul><li><b>簽到：</b>上課前 30 分鐘開放，直到下課後 60 分鐘內都可補簽。學員可以自己按「我到了」，教練也可以代為簽到。</li><li><b>上課照片：</b>現場合照，或線上課的視訊截圖，每堂最多 8 張，簽退前可新增或刪除。</li><li><b>簽退：</b>下課後按簽退並寫一句課程摘要，這堂課的「實際上課時數」才會計入交付與分潤。學員會收到「這堂課完成了 ✓」。</li><li><b>不可竄改：</b>簽到、簽退時間由伺服器記錄，送出後任何人都無法修改，保障教練與學員雙方。</li></ul></div></div>
+  <div class="feature"><div class="side"><span class="tag coach">記錄</span><h3>上課記錄與時數報表</h3><p>課後回饋與個人備註分開存放，學員只看得到該看的。</p></div><div class="body"><ul><li><b>新增上課記錄：</b>選擇學員、填寫主題與內容。</li><li><b>給學員的回饋 vs 教練私密備註：</b>回饋可設為「學員可見」，學員會收到通知；私密備註學員完全無法讀取。</li><li><b>時數報表：</b>依月份查看每位學員的實際上課時數與完成堂數。</li><li><b>成長路徑：</b>學員回報完成里程碑後，由你確認；也可依學員狀況調整他目前所在的階段。</li></ul></div></div>
+</div></section>
+<section id="admin" class="alt"><div class="wrap">
+  <div class="sec-head"><div class="num">06</div><h2>管理員功能詳解</h2>
+  <p class="sub">管理員畫面有五個分頁：<b>總覽、成員、課程管理、交付記錄、財務</b>。聯盟的人、課、時數與錢，都在這裡。</p></div>
+  <div class="feature"><div class="side"><span class="tag admin">總覽</span><h3>整個聯盟的健康狀況</h3><p>成員數、課程模組數、本月交付，以及學員在 9 階段成長路徑上的分布。</p></div><div class="body"><ul><li><b>本月課程交付：</b>實際時數、完成堂數與交付率，點「查看報表」看明細。</li><li><b>聯盟成長漏斗：</b>看出學員集中在哪個階段，哪裡最需要投入資源。</li><li><b>近期活動：</b>最新加入的成員與最近的上課記錄。</li></ul></div></div>
+  <div class="feature"><div class="side"><span class="tag admin">成員</span><h3>新增成員與開通帳號</h3><p>帳號只由管理員建立，確保每一位使用者都是聯盟的人。</p></div><div class="body"><ul><li><b>新增成員：</b>填寫姓名、Email（需輸入兩次避免打錯）、初始密碼（至少 6 碼），勾選身分；學員可再填課程班別、主要聯絡教練、加入日期。</li><li><b>一鍵複製登入資訊：</b>新增成功後按「複製登入資訊給對方」，網址、帳號、密碼整理好，直接貼給對方。</li><li><b>等待開通：</b>有人已登入但還不在成員名單時會送出申請，你會收到通知；在成員頁選好身分按「開通」即可，對方不必重新登入。</li><li><b>編輯與移除：</b>可調整身分（教練與管理員可同時勾選）、班別與聯絡教練；系統會防止你移除自己的管理員身分。</li></ul></div></div>
+  <div class="feature"><div class="side"><span class="tag admin">課程管理</span><h3>所有教練的課程，一個地方管好</h3><p>搜尋、篩選、查看使用狀況，安全地調整每一個模組。</p></div><div class="body"><ul><li><b>搜尋與篩選：</b>依課程名稱、教練、階段搜尋，並可只看上架中或已下架的模組。</li><li><b>使用狀況：</b>每個模組有幾位學員已分配、幾堂即將上課、幾份學習資料，一目了然。</li><li><b>下架／重新上架：</b>暫時不用的課程請用「下架」，學員暫時看不到，資料完整保留。</li><li><b>轉移給其他教練：</b>教練異動時，學習資料與學員分配會跟著模組一起轉移。</li><li><b>永久刪除（防誤刪）：</b>收在最下方，必須輸入「刪除」兩字才會執行，並先告訴你會影響哪些學員。</li></ul></div></div>
+  <div class="feature"><div class="side"><span class="tag admin">交付記錄</span><h3>全聯盟的時數報表與上課紀錄</h3><p>可作為對學員、合作單位或內部稽核的交付證明。</p></div><div class="body"><ul><li><b>時數報表：</b>依月份、依學員或依教練統計實際上課時數，可匯出 CSV（Excel 可直接開啟）。</li><li><b>上課記錄與全聯盟課表：</b>查看每一堂課的簽到簽退時間、上課照片與教練回饋。</li></ul></div></div>
+  <div class="feature"><div class="side"><span class="tag admin">財務</span><h3>收款、分潤、支出與公積金</h3><p>公式自動計算：<b>已收金額 − 教練分潤 − 其他支出 ＝ 星辰聯盟公積金</b>。</p></div><div class="body"><ul><li><b>學員收款：</b>設定每位學員的應收學費，登記每一筆收款（日期、方式、備註），自動算出未收金額。</li><li><b>教練分潤：</b>依當月「已簽到＋已簽退」的實際時數 × 每小時分潤自動試算，按「建立分潤」產生待匯款紀錄；匯款後按「確認已匯款」，教練會收到通知。</li><li><b>其他支出：</b>場地、器材等支出逐筆登記。</li><li><b>期間檢視與匯出：</b>可切換月份／全年／全部期間，並匯出本期明細 CSV。</li><li><b>異動紀錄：</b>所有收款、分潤、支出與設定的新增、修改、刪除都自動記錄「誰、什麼時候、改了什麼」，紀錄本身無法修改或刪除。</li></ul></div></div>
+</div></section>
+<section id="day" class="dark"><div class="wrap">
+  <div class="sec-head"><div class="num">07</div><h2>教練的一天：App 怎麼陪你上完一堂課</h2>
+  <p class="sub">以一堂下午 2:00 的一對一課程為例。</p></div>
+  <ul class="flow">
+    <li><time>08:00</time><h3>手機通知：今天有 2 堂課</h3><p>不用打開行事曆，通知已經告訴你時間與學員。</p></li>
+    <li><time>13:30</time><h3>開放簽到</h3><p>上課前 30 分鐘，學員到了就按「我到了」，你收到「學員已簽到」。</p></li>
+    <li><time>14:00</time><h3>上課，順手拍張照</h3><p>從「總覽 → 今天的課」上傳現場合照或線上截圖。</p></li>
+    <li><time>15:30</time><h3>簽退＋一句話摘要</h3><p>時數自動計入交付與分潤，學員收到「這堂課完成了 ✓」。</p></li>
+    <li><time>晚上</time><h3>寫上課記錄</h3><p>給學員的回饋設為可見，私密觀察寫在備註；學員收到通知後會再回饋給你。</p></li>
+    <li><time>月底</time><h3>分潤自動試算、匯款通知</h3><p>管理員依實際時數建立分潤，匯款後你的手機會跳出「分潤已匯款」。</p></li>
+  </ul>
+</div></section>
+<section id="faq"><div class="wrap">
+  <div class="sec-head"><div class="num">08</div><h2>常見問題</h2></div>
+  <details><summary>簽到或簽退按錯了，可以改嗎？</summary><div><p>為了讓交付紀錄具有公信力，簽到、簽退送出後無法由教練或學員修改。如有特殊狀況，請聯絡管理員協助處理。</p></div></details><details><summary>學員忘記簽到怎麼辦？</summary><div><p>下課後 60 分鐘內仍可補簽，教練也可以代學員簽到。超過時間的課會在總覽以「未簽到」提醒。</p></div></details><details><summary>一堂課可以上傳幾張照片？</summary><div><p>每堂最多 8 張，照片會自動壓縮。簽退之後就不能再新增或刪除，請在簽退前確認。</p></div></details><details><summary>沒有收到通知？</summary><div><p>請確認：① iPhone 是從主畫面圖示開啟，且 iOS 16.4 以上；② 手機設定中允許「星辰聯盟」通知；③ 右上角 Aa 選單的「手機通知」顯示「已開啟」；④ 手機沒有開啟勿擾／專注模式。</p></div></details><details><summary>換新手機或換瀏覽器了？</summary><div><p>在新手機重新「加入主畫面」並登入，再開啟一次通知即可。資料都存在雲端，不會遺失。</p></div></details><details><summary>課程模組不想用了，要刪除嗎？</summary><div><p>建議使用「下架」。下架後學員暫時看不到，學習資料與分配都保留，隨時可以重新上架。永久刪除無法復原。</p></div></details><details><summary>新成員說他登入後看到「帳號尚未開通」？</summary><div><p>代表他有登入帳號但還不在成員名單。請他填寫姓名並按「送出開通申請」，管理員到「成員」頁的等待開通區按開通，對方按「我已被開通，進入 App」即可。</p></div></details><details><summary>資料安全嗎？</summary><div><p>App 使用 Google Firebase 雲端服務與 HTTPS 加密連線，並依身分設定讀寫權限：學員只看得到自己的資料，教練私密備註與財務資料學員完全無法讀取，財務僅限管理員。</p></div></details>
+</div></section>
+<footer><div class="wrap foot">
+  <div><b>星辰聯盟 iSTAR Alliance App</b><br>版本 istarallinance_v1.0・正式上線 2026/10/11<br>App 網址：<a href="https://star.iwillstar.com" target="_blank" rel="noopener">star.iwillstar.com</a></div>
+  <div><b>使用上有任何問題</b><br>請洽星辰聯盟管理員<br>Email：<a href="mailto:iwillstar58@gmail.com">iwillstar58@gmail.com</a></div>
+  <div style="flex-basis:100%;font-size:13px;opacity:.75">© 2017 - 2026 鈊誠集團 iSTAR Group</div>
+</div></footer>
+<script>
+document.querySelectorAll('.tabs button').forEach(function(b){b.addEventListener('click',function(){
+  var box=b.closest('section');box.querySelectorAll('.tabs button').forEach(function(x){x.classList.toggle('on',x===b)});
+  box.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('on',p.id==='pane-'+b.dataset.pane)});
+})});
+(function(){var ua=navigator.userAgent;if(/android/i.test(ua)){var a=document.querySelector('.tabs button[data-pane=android]');a&&a.click()}})();
+var links=[].slice.call(document.querySelectorAll('.toc a'));
+if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){links.forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+e.target.id)})}})},{rootMargin:'-45% 0px -50% 0px'});
+document.querySelectorAll('section[id]').forEach(function(s){io.observe(s)})}
+</script>
+</body></html>

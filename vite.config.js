@@ -8,7 +8,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       // 推播通知的處理程式（public/push-sw.js）載入到 PWA 的 service worker
-      workbox: { importScripts: ['push-sw.js'], navigateFallbackDenylist: [/^\/api\//] },
+      workbox: { importScripts: ['push-sw.js'], navigateFallbackDenylist: [/^\/api\//, /^\/guide\//] },
       includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'maskable-512.png', 'logo-mark.svg'],
       manifest: {
         name: 'iSTAR Alliance 星辰聯盟',
