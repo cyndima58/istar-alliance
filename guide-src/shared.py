@@ -57,7 +57,7 @@ def head(title, desc):
 def hero(kicker, title, lead, role_chip):
     return f'''
 <header class="hero"><div class="wrap">
-  <div class="brand"><span style="background:#fff;border-radius:12px;padding:5px;display:inline-flex">{LOGO.replace('<svg ', '<svg style="width:34px;height:34px" ')}</span><span>iSTAR ALLIANCE<br>星辰聯盟</span></div>
+  <div class="brand">iSTAR ALLIANCE 星辰聯盟︱專屬APP功能操作說明</div>
   <h1><small>{kicker}</small>{title}</h1>
   <p class="lead">{lead}</p>
   <div class="meta">
