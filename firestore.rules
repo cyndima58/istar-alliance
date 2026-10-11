@@ -71,13 +71,33 @@ service cloud.firestore {
 
     // ── 排課行事曆 ──
     // status: open 可預約 | pending 待確認 | confirmed 已排定 | reschedule 請求改期
+    // 出席：簽到 checkIn／簽退 checkOut 一旦寫入就不能被教練或學員修改；
+    // 寫入時間必須是伺服器時間（== request.time），簽名者必須是本人
+    function stampOk(f) {
+      let before = resource.data.get(f, null);
+      let after  = request.resource.data.get(f, null);
+      return after == before
+          || (before == null && after != null && after.at == request.time && after.by == me());
+    }
+
     match /sessions/{sessionId} {
       allow read:   if signedIn();
       allow create: if isCoach() && request.resource.data.coachId == me()
-                    && request.resource.data.status in ['open', 'pending'];
-      allow delete: if isAdmin() || (isCoach() && resource.data.coachId == me());
+                    && request.resource.data.status in ['open', 'pending']
+                    && !('checkIn' in request.resource.data) && !('checkOut' in request.resource.data);
+      // 已簽到的課是交付證據，只有管理員能刪
+      allow delete: if isAdmin() || (isCoach() && resource.data.coachId == me() && !('checkIn' in resource.data));
       allow update: if isAdmin()
-                    || (isCoach() && resource.data.coachId == me())
+                    || (isCoach() && resource.data.coachId == me()
+                        && stampOk('checkIn') && stampOk('checkOut')
+                        // 簽退前一定要先簽到
+                        && (request.resource.data.get('checkOut', null) == null || request.resource.data.get('checkIn', null) != null))
+                    // 學員：上課時自己簽到（只能寫 checkIn，且身分標記為 student）
+                    || (signedIn() && resource.data.studentUid == me()
+                        && resource.data.status == 'confirmed'
+                        && onlyChanges(['checkIn', 'updatedAt'])
+                        && stampOk('checkIn')
+                        && request.resource.data.checkIn.role == 'student')
                     // 學員：確認或請求改期自己的課
                     || (signedIn() && resource.data.studentUid == me()
                         && request.resource.data.status in ['confirmed', 'reschedule']
@@ -87,6 +107,16 @@ service cloud.firestore {
                         && request.resource.data.status == 'confirmed'
                         && request.resource.data.studentUid == me()
                         && onlyChanges(['status', 'studentUid', 'studentName', 'confirmedAt', 'updatedAt']));
+
+      // 上課證明照片：該堂課的教練、學員、管理員可看；教練在簽退前可新增／刪除
+      match /photos/{photoId} {
+        function sess() { return get(/databases/$(database)/documents/sessions/$(sessionId)).data; }
+        allow read:   if isAdmin() || (signedIn() && (sess().coachId == me() || sess().get('studentUid', '') == me()));
+        allow create: if request.resource.data.addedByUid == me()
+                      && request.resource.data.data is string && request.resource.data.data.size() < 1000000
+                      && (isAdmin() || (isCoach() && sess().coachId == me() && !('checkOut' in sess())));
+        allow delete: if isAdmin() || (isCoach() && sess().coachId == me() && !('checkOut' in sess()));
+      }
     }
 
     // ── 成長路徑：學員只能寫自己的「回報」，確認與升階只有教練／管理員能做 ──

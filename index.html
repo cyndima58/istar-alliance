@@ -2,7 +2,7 @@
 <html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
     <!-- 主題色（配合新明亮配色） -->
     <meta name="theme-color" content="#FAFAF7" />
@@ -20,7 +20,7 @@
 
     <!-- PWA Manifest 由 vite-plugin-pwa 自動產生並注入 -->
 
-    <!-- Google Fonts — Cormorant Garamond 全字重 + Noto Serif TC -->
+    <!-- Google Fonts：標題用 Cormorant Garamond + Noto Serif TC；內文用系統字（最清楚、免下載） -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -28,6 +28,8 @@
       rel="stylesheet"
     />
 
+    <!-- 先套用使用者的字級設定，避免畫面跳動 -->
+    <script>try{var f=localStorage.getItem("istar.fontScale");if(f)document.documentElement.style.setProperty("--fs",f)}catch(e){}</script>
     <!-- 防止 FOUC：預設背景與文字色 -->
     <style>
       html, body, #root {
@@ -36,7 +38,7 @@
         padding: 0;
         background: #FAFAF7;
         color: #1C1A17;
-        font-family: 'Cormorant Garamond', 'Noto Serif TC', serif;
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
       }
     </style>
 

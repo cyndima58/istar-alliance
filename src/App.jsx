@@ -11,6 +11,14 @@ import {
   overallProgress, canAdvance, daysInStage, daysBetween, pendingClaims, funnel, stuckStudents,
   initialJourney,
 } from "./journey";
+import {
+  attendanceState, checkInWindow, checkInOpensAt, ATTEND, MAX_PHOTOS, fmtClock, fmtDateTime,
+  scheduledMinutes, deliveredMinutes, isShort, formatMinutes, toHours, inRange, monthRange, monthOptions,
+  summarize, totals, deliveredList, sessionsCsv,
+} from "./attendance";
+
+// 字級：依使用者設定的倍率縮放（--fs）
+const fz = (px) => `calc(${px}px * var(--fs))`;
 
 const GLOBAL_CSS = `
 :root {
@@ -21,17 +29,17 @@ const GLOBAL_CSS = `
   --cream-4: #E2DFD5;
   --ink:     #1C1A17;
   --ink-2:   #3D3A34;
-  --ink-3:   #7A766C;
-  --ink-4:   #B0AC9F;
+  --ink-3:   #5C5850;   /* 次要文字：對比 ≥ 6:1 */
+  --ink-4:   #7D786D;   /* 輔助文字：對比 ≥ 4.5:1 */
 
   /* ── Gold accent ── */
-  --gold:       #9A7B3F;
+  --gold:       #86672C;   /* 加深，文字對比 ≥ 4.5:1 */
   --gold-light: #C4A05A;
   --gold-pale:  #F0E8D5;
   --gold-line:  rgba(154,123,63,0.22);
 
   /* ── Status colours ── */
-  --sage:      #4A7B5A;
+  --sage:      #3F6E4E;
   --sage-pale: #EAF2EC;
   --rust:      #8B3A2A;
   --rust-pale: #F5EAE7;
@@ -39,13 +47,18 @@ const GLOBAL_CSS = `
   --slate-pale:#ECF0F8;
 
   /* ── Radii ── */
-  --r:    6px;
-  --r-lg: 10px;
-  --r-xl: 16px;
+  --r:    8px;
+  --r-lg: 12px;
+  --r-xl: 18px;
   --r-pill: 100px;
 
   /* ── Typography ── */
-  --font: 'Cormorant Garamond', 'Noto Serif TC', serif;
+  /* 內文用系統無襯線字（iPhone 蘋方、Android 思源黑體、Windows 微軟正黑），中文最清楚 */
+  --font: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif;
+  /* 標題與品牌保留典雅襯線 */
+  --font-display: 'Cormorant Garamond', 'Noto Serif TC', serif;
+  /* 字級倍率：設定裡的「字級」會改這個值 */
+  --fs: 1;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -70,7 +83,7 @@ body {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 430px;
+  max-width: 480px;
   height: 100dvh;
   margin: 0 auto;
   display: flex;
@@ -92,16 +105,15 @@ body {
 .header-brand { display: flex; align-items: center; gap: 9px; }
 .header-logo-mark {
   font-family: var(--font);
-  font-size: 18px;
+  font-size: calc(20px * var(--fs));
   color: var(--gold);
   line-height: 1;
-  font-style: italic;
 }
 .header-logo-text {
   font-family: var(--font);
-  font-size: 14px;
+  font-size: calc(16px * var(--fs));
   font-weight: 600;
-  letter-spacing: .14em;
+  letter-spacing: .02em;
   color: var(--ink);
   text-transform: uppercase;
 }
@@ -109,11 +121,11 @@ body {
 .header-right { display: flex; align-items: center; gap: 10px; }
 .role-badge {
   font-family: var(--font);
-  font-size: 10px;
+  font-size: calc(12px * var(--fs));
   font-weight: 600;
   padding: 3px 10px;
   border-radius: var(--r-pill);
-  letter-spacing: .1em;
+  letter-spacing: .02em;
   text-transform: uppercase;
 }
 .role-badge.coach  { background: var(--sage-pale);  color: var(--sage);  border: 1px solid rgba(74,123,90,.2); }
@@ -125,9 +137,9 @@ body {
   border: 1px solid var(--cream-4);
   background: transparent;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: calc(13px * var(--fs));
   font-family: var(--font);
-  letter-spacing: .08em;
+  letter-spacing: .02em;
   cursor: pointer;
   transition: all .2s;
 }
@@ -138,13 +150,13 @@ body {
   background: var(--gold-pale);
   display: flex; align-items: center; justify-content: center;
   font-family: var(--font);
-  font-size: 14px; font-weight: 600;
+  font-size: calc(16px * var(--fs)); font-weight: 600;
   color: var(--gold);
   border: 1px solid var(--gold-line);
   flex-shrink: 0;
 }
 .avatar.coach-av-header { background: var(--sage-pale); color: var(--sage); border-color: rgba(74,123,90,.25); }
-.coach-av { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font); font-size: 14px; font-weight: 600; flex-shrink: 0; }
+.coach-av { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font); font-size: calc(16px * var(--fs)); font-weight: 600; flex-shrink: 0; }
 
 /* ── Screen animation ── */
 @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
@@ -161,7 +173,7 @@ body {
 }
 .topbar-title {
   font-family: var(--font);
-  font-size: 24px; font-weight: 500;
+  font-size: calc(26px * var(--fs)); font-weight: 500;
   letter-spacing: .01em;
   color: var(--ink);
 }
@@ -208,11 +220,11 @@ body {
 /* ── Greeting ── */
 .greeting-name {
   font-family: var(--font);
-  font-size: 28px; font-weight: 500;
+  font-size: calc(30px * var(--fs)); font-weight: 500;
   letter-spacing: -.01em; line-height: 1.2;
   color: var(--ink);
 }
-.greeting-sub { font-size: 15px; color: var(--ink-3); margin-top: 6px; line-height: 1.5; font-style: italic; }
+.greeting-sub { font-size: calc(17px * var(--fs)); color: var(--ink-3); margin-top: 6px; line-height: 1.5; }
 
 /* ── Stats ── */
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
@@ -224,19 +236,19 @@ body {
 }
 .stat-num {
   font-family: var(--font);
-  font-size: 32px; font-weight: 500;
+  font-size: calc(34px * var(--fs)); font-weight: 500;
   letter-spacing: -.02em; line-height: 1;
   color: var(--ink);
 }
 .stat-num.gold   { color: var(--gold); }
 .stat-num.nebula { color: var(--slate); }
-.stat-lbl { font-size: 11px; color: var(--ink-3); margin-top: 6px; letter-spacing: .1em; text-transform: uppercase; }
+.stat-lbl { font-size: calc(13px * var(--fs)); color: var(--ink-3); margin-top: 6px; letter-spacing: .02em; text-transform: uppercase; }
 
 /* ── Section heading ── */
 .sec-h {
   font-family: var(--font);
-  font-size: 11px; font-weight: 600; color: var(--ink-3);
-  letter-spacing: .14em; text-transform: uppercase;
+  font-size: calc(13px * var(--fs)); font-weight: 600; color: var(--ink-3);
+  letter-spacing: .02em; text-transform: uppercase;
   margin: 20px 0 10px;
 }
 
@@ -245,7 +257,7 @@ body {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 9px; border-radius: var(--r-pill);
   font-family: var(--font);
-  font-size: 11px; font-weight: 500; letter-spacing: .06em;
+  font-size: calc(13px * var(--fs)); font-weight: 500; letter-spacing: .02em;
 }
 .badge-nebula { background: var(--slate-pale); color: var(--slate); border: 1px solid rgba(58,74,107,.18); }
 .badge-gold   { background: var(--gold-pale);  color: var(--gold);  border: 1px solid var(--gold-line); }
@@ -276,14 +288,14 @@ body {
   background: var(--cream);
   display: flex; align-items: center; justify-content: center;
 }
-.j-title { font-family: var(--font); font-size: 15px; font-weight: 500; letter-spacing: .01em; }
+.j-title { font-family: var(--font); font-size: calc(17px * var(--fs)); font-weight: 500; letter-spacing: .01em; }
 .j-title.active-stage { color: var(--gold); }
-.j-sub { font-size: 13px; color: var(--ink-3); margin-top: 3px; font-style: italic; }
+.j-sub { font-size: calc(15px * var(--fs)); color: var(--ink-3); margin-top: 3px; }
 
 /* ── Course ── */
 .course-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.course-name { font-family: var(--font); font-size: 18px; font-weight: 500; margin-bottom: 3px; letter-spacing: .01em; }
-.course-meta { font-size: 13px; color: var(--ink-3); font-style: italic; }
+.course-name { font-family: var(--font); font-size: calc(20px * var(--fs)); font-weight: 500; margin-bottom: 3px; letter-spacing: .01em; }
+.course-meta { font-size: calc(15px * var(--fs)); color: var(--ink-3); }
 
 /* ── People rows ── */
 .coach-row {
@@ -292,15 +304,15 @@ body {
   border-bottom: 1px solid var(--cream-3);
 }
 .coach-row:last-child { border-bottom: none; }
-.coach-name { font-family: var(--font); font-size: 15px; font-weight: 500; letter-spacing: .01em; }
-.coach-tag { font-size: 12px; color: var(--ink-3); margin-top: 2px; font-style: italic; }
+.coach-name { font-family: var(--font); font-size: calc(17px * var(--fs)); font-weight: 500; letter-spacing: .01em; }
+.coach-tag { font-size: calc(14px * var(--fs)); color: var(--ink-3); margin-top: 2px; }
 
 /* ── Buttons ── */
 .btn {
   padding: 9px 18px; border-radius: var(--r);
   border: 1px solid var(--cream-3);
   font-family: var(--font);
-  font-size: 13px; font-weight: 500; letter-spacing: .06em;
+  font-size: calc(15px * var(--fs)); font-weight: 500; letter-spacing: .02em;
   cursor: pointer;
   background: #fff; color: var(--ink);
   transition: all .2s;
@@ -320,7 +332,7 @@ body {
   border-color: var(--gold-line);
 }
 .btn-gold:hover { background: #EDE0C4; }
-.btn-sm { padding: 6px 13px; font-size: 12px; }
+.btn-sm { padding: 6px 13px; font-size: calc(14px * var(--fs)); }
 .btn-row { display: flex; gap: 8px; margin-top: 12px; }
 .btn-row .btn { flex: 1; }
 
@@ -329,21 +341,20 @@ body {
   background: var(--cream-2);
   border-left: 2px solid var(--gold);
   border-radius: 0 var(--r) var(--r) 0;
-  padding: 12px 16px; font-size: 14px;
+  padding: 12px 16px; font-size: calc(16px * var(--fs));
   color: var(--ink-2); line-height: 1.7; margin-bottom: 8px;
-  font-style: italic;
 }
-.feedback-author { font-size: 11px; color: var(--gold); margin-bottom: 8px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.feedback-author { font-size: calc(13px * var(--fs)); color: var(--gold); margin-bottom: 8px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
 
 /* ── Forms ── */
-.input-label { font-family: var(--font); font-size: 11px; color: var(--ink-3); margin-bottom: 5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; }
+.input-label { font-family: var(--font); font-size: calc(13px * var(--fs)); color: var(--ink-3); margin-bottom: 5px; letter-spacing: .02em; text-transform: uppercase; font-weight: 600; }
 .input-field {
   width: 100%;
   padding: 11px 14px;
   background: var(--cream-2);
   border: 1px solid var(--cream-3);
   border-radius: var(--r);
-  color: var(--ink); font-size: 15px;
+  color: var(--ink); font-size: calc(17px * var(--fs));
   font-family: var(--font);
   margin-bottom: 10px;
   transition: border-color .2s, box-shadow .2s;
@@ -351,13 +362,13 @@ body {
   line-height: 1.5;
 }
 .input-field:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(154,123,63,.1); background: #fff; }
-.input-field::placeholder { color: var(--ink-4); font-style: italic; }
+.input-field::placeholder { color: var(--ink-4); }
 textarea.input-field { resize: none; line-height: 1.7; }
 select.input-field { appearance: none; cursor: pointer; }
 
 /* ── Toggle ── */
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--cream-3); }
-.toggle-lbl { font-family: var(--font); font-size: 14px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+.toggle-lbl { font-family: var(--font); font-size: calc(16px * var(--fs)); color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
 .toggle-sw { width: 40px; height: 23px; border-radius: 12px; background: var(--cream-3); border: none; cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0; }
 .toggle-sw.on { background: var(--ink); }
 .toggle-sw::after { content:''; position:absolute; top:3px; left:3px; width:17px; height:17px; border-radius:50%; background:#fff; transition:left .2s var(--ease-spring); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
@@ -368,7 +379,7 @@ select.input-field { appearance: none; cursor: pointer; }
 .chip {
   padding: 5px 13px; border-radius: var(--r-pill);
   font-family: var(--font);
-  font-size: 12px; font-weight: 500; letter-spacing: .04em;
+  font-size: calc(14px * var(--fs)); font-weight: 500; letter-spacing: .04em;
   border: 1px solid var(--cream-3);
   background: #fff; color: var(--ink-3);
   cursor: pointer; transition: all .2s;
@@ -377,24 +388,24 @@ select.input-field { appearance: none; cursor: pointer; }
 
 /* ── Module chips ── */
 .module-pool { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; background: var(--cream-2); border-radius: var(--r); border: 1px dashed var(--cream-4); margin-bottom: 10px; min-height: 56px; }
-.m-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--r-pill); font-family: var(--font); font-size: 12px; font-weight: 500; background: var(--gold-pale); color: var(--gold); border: 1px solid var(--gold-line); cursor: pointer; user-select: none; transition: all .15s; letter-spacing: .04em; }
+.m-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--r-pill); font-family: var(--font); font-size: calc(14px * var(--fs)); font-weight: 500; background: var(--gold-pale); color: var(--gold); border: 1px solid var(--gold-line); cursor: pointer; user-select: none; transition: all .15s; letter-spacing: .04em; }
 .m-chip:hover { background: #EDE0C4; }
 .m-chip.assigned { background: var(--sage-pale); color: var(--sage); border-color: rgba(74,123,90,.22); }
 .drop-zone { padding: 12px; background: var(--sage-pale); border: 1px dashed rgba(74,123,90,.3); border-radius: var(--r); min-height: 64px; }
-.drop-label { font-family: var(--font); font-size: 12px; color: var(--sage); margin-bottom: 8px; letter-spacing: .04em; font-style: italic; }
+.drop-label { font-family: var(--font); font-size: calc(14px * var(--fs)); color: var(--sage); margin-bottom: 8px; letter-spacing: .04em; }
 
 /* ── Record notes ── */
-.record-note { background: var(--cream-2); border-radius: var(--r); padding: 11px 14px; font-size: 14px; color: var(--ink-2); line-height: 1.7; margin-top: 8px; font-style: italic; }
+.record-note { background: var(--cream-2); border-radius: var(--r); padding: 11px 14px; font-size: calc(16px * var(--fs)); color: var(--ink-2); line-height: 1.7; margin-top: 8px; }
 .record-note.coach-only { background: var(--gold-pale); }
-.record-note-label { font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 5px; font-style: normal; }
+.record-note-label { font-family: var(--font); font-size: calc(12px * var(--fs)); font-weight: 700; letter-spacing: .02em; text-transform: uppercase; margin-bottom: 5px; font-style: normal; }
 
 /* ── Module cards ── */
 .mod-card { background: #fff; border: 1px solid var(--cream-3); border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 8px; border-left: 2px solid var(--gold); }
 .mod-card.teal-l { border-left-color: var(--sage); }
 .mod-card.gold-l  { border-left-color: var(--gold); }
-.mod-title { font-family: var(--font); font-size: 15px; font-weight: 500; margin-bottom: 6px; letter-spacing: .01em; }
+.mod-title { font-family: var(--font); font-size: calc(17px * var(--fs)); font-weight: 500; margin-bottom: 6px; letter-spacing: .01em; }
 .mod-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
-.mod-outline { font-family: var(--font); font-size: 13px; color: var(--ink-3); line-height: 1.6; font-style: italic; }
+.mod-outline { font-family: var(--font); font-size: calc(15px * var(--fs)); color: var(--ink-3); line-height: 1.6; }
 
 /* ── Bottom nav ── */
 .bottom-nav {
@@ -404,7 +415,7 @@ select.input-field { appearance: none; cursor: pointer; }
   display: flex; flex-shrink: 0;
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
-.nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-family: var(--font); font-size: 10px; font-weight: 600; color: var(--ink-4); border: none; background: none; cursor: pointer; position: relative; letter-spacing: .1em; text-transform: uppercase; transition: color .2s; }
+.nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-family: var(--font); font-size: calc(12px * var(--fs)); font-weight: 600; color: var(--ink-4); border: none; background: none; cursor: pointer; position: relative; letter-spacing: .02em; text-transform: uppercase; transition: color .2s; }
 .nav-item svg { width: 19px; height: 19px; }
 .nav-item.active { color: var(--gold); }
 .nav-item.active::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:20px; height:1.5px; background:var(--gold); border-radius:0 0 2px 2px; }
@@ -414,24 +425,24 @@ select.input-field { appearance: none; cursor: pointer; }
 .modal-sheet { background:var(--cream); border:1px solid var(--cream-3); border-top-left-radius:20px; border-top-right-radius:20px; padding:22px 20px 36px; width:100%; max-height:90%; overflow-y:auto; }
 .modal-sheet::-webkit-scrollbar { display:none; }
 .modal-handle { width:28px; height:2px; border-radius:2px; background:var(--cream-4); margin:0 auto 22px; }
-.modal-title { font-family:var(--font); font-size:22px; font-weight:500; margin-bottom:20px; letter-spacing:.01em; color:var(--ink); }
+.modal-title { font-family:var(--font); font-size: calc(24px * var(--fs)); font-weight:500; margin-bottom:20px; letter-spacing:.01em; color:var(--ink); }
 
 /* ── Inner tabs ── */
 .inner-tabs { display:flex; border-bottom:1px solid var(--cream-3); flex-shrink:0; }
-.inner-tab { flex:1; padding:10px; font-family:var(--font); font-size:11px; font-weight:600; text-align:center; border:none; background:none; color:var(--ink-4); cursor:pointer; border-bottom:1.5px solid transparent; transition:all .2s; letter-spacing:.1em; text-transform:uppercase; }
+.inner-tab { flex:1; padding:10px; font-family:var(--font); font-size: calc(13px * var(--fs)); font-weight:600; text-align:center; border:none; background:none; color:var(--ink-4); cursor:pointer; border-bottom:1.5px solid transparent; transition:all .2s; letter-spacing: .02em; text-transform:uppercase; }
 .inner-tab.active { color:var(--gold); border-bottom-color:var(--gold); }
 
 /* ── QA grid ── */
 .qa-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .qa-card { background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:16px; cursor:pointer; transition:all .2s; text-align:left; width:100%; }
 .qa-card:hover { border-color:var(--gold-line); background:var(--gold-pale); }
-.qa-icon { font-size:20px; margin-bottom:9px; display:block; line-height:1; }
-.qa-label { font-family:var(--font); font-size:14px; font-weight:500; color:var(--ink); letter-spacing:.01em; }
-.qa-sub { font-family:var(--font); font-size:12px; color:var(--ink-3); margin-top:3px; font-style:italic; }
+.qa-icon { font-size: calc(22px * var(--fs)); margin-bottom:9px; display:block; line-height:1; }
+.qa-label { font-family:var(--font); font-size: calc(16px * var(--fs)); font-weight:500; color:var(--ink); letter-spacing:.01em; }
+.qa-sub { font-family:var(--font); font-size: calc(14px * var(--fs)); color:var(--ink-3); margin-top:3px;  }
 
 /* ── iSTAR logo ── */
-.istar-logo { font-family:var(--font); font-size:10px; letter-spacing:.2em; color:var(--gold); text-transform:uppercase; font-style:italic; }
-.istar-mark { font-size:16px; font-weight:600; font-style:normal; }
+.istar-logo { font-family:var(--font); font-size: calc(12px * var(--fs)); letter-spacing:.2em; color:var(--gold); text-transform:uppercase; font-style:italic; }
+.istar-mark { font-size: calc(18px * var(--fs)); font-weight:600; font-style:normal; }
 
 /* ── Stage bar ── */
 .stage-bar { display:flex; gap:3px; margin-bottom:6px; }
@@ -442,45 +453,45 @@ select.input-field { appearance: none; cursor: pointer; }
 
 /* ── Detail rows ── */
 .detail-meta-row { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid var(--cream-3); align-items:flex-start; }
-.detail-meta-lbl { font-family:var(--font); font-size:10px; color:var(--ink-4); min-width:56px; flex-shrink:0; padding-top:2px; letter-spacing:.1em; text-transform:uppercase; font-weight:600; }
-.detail-meta-val { font-family:var(--font); font-size:14px; color:var(--ink-2); line-height:1.65; font-style:italic; }
+.detail-meta-lbl { font-family:var(--font); font-size: calc(12px * var(--fs)); color:var(--ink-4); min-width:56px; flex-shrink:0; padding-top:2px; letter-spacing: .02em; text-transform:uppercase; font-weight:600; }
+.detail-meta-val { font-family:var(--font); font-size: calc(16px * var(--fs)); color:var(--ink-2); line-height:1.65;  }
 
 /* ── Login ── */
 .login-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:36px 26px; background:var(--cream); }
-.login-logo { font-family:var(--font); font-size:56px; color:var(--gold); text-align:center; line-height:1; margin-bottom:16px; font-style:italic; }
-.login-brand { font-family:var(--font); font-size:22px; font-weight:500; color:var(--ink); letter-spacing:.1em; text-align:center; margin-bottom:4px; text-transform:uppercase; }
+.login-logo { font-family:var(--font); font-size: calc(58px * var(--fs)); color:var(--gold); text-align:center; line-height:1; margin-bottom:16px; font-style:italic; }
+.login-brand { font-family:var(--font); font-size: calc(24px * var(--fs)); font-weight:500; color:var(--ink); letter-spacing:.1em; text-align:center; margin-bottom:4px; text-transform:uppercase; }
 .login-brand span { color:var(--gold); }
-.login-sub { font-family:var(--font); font-size:14px; color:var(--ink-3); text-align:center; margin-bottom:36px; font-style:italic; }
+.login-sub { font-family:var(--font); font-size: calc(16px * var(--fs)); color:var(--ink-3); text-align:center; margin-bottom:36px;  }
 .login-card { width:100%; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-xl); padding:28px 24px; box-shadow:0 4px 40px rgba(28,26,23,.06); }
-.login-error { background:var(--rust-pale); border:1px solid rgba(139,58,42,.2); border-radius:var(--r); padding:11px 14px; font-family:var(--font); font-size:13px; color:var(--rust); margin-bottom:14px; text-align:center; line-height:1.5; }
-.login-no-access { background:var(--gold-pale); border:1px solid var(--gold-line); border-radius:var(--r); padding:13px 16px; font-family:var(--font); font-size:13px; color:var(--gold); text-align:center; margin-top:14px; line-height:1.7; font-style:italic; }
+.login-error { background:var(--rust-pale); border:1px solid rgba(139,58,42,.2); border-radius:var(--r); padding:11px 14px; font-family:var(--font); font-size: calc(15px * var(--fs)); color:var(--rust); margin-bottom:14px; text-align:center; line-height:1.5; }
+.login-no-access { background:var(--gold-pale); border:1px solid var(--gold-line); border-radius:var(--r); padding:13px 16px; font-family:var(--font); font-size: calc(15px * var(--fs)); color:var(--gold); text-align:center; margin-top:14px; line-height:1.7;  }
 
 /* ── Resource panel ── */
 .resource-panel { background:var(--cream-2); border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:16px; margin-top:12px; }
-.resource-panel-title { font-family:var(--font); font-size:11px; font-weight:600; color:var(--ink-3); letter-spacing:.12em; text-transform:uppercase; margin-bottom:12px; }
+.resource-panel-title { font-family:var(--font); font-size: calc(13px * var(--fs)); font-weight:600; color:var(--ink-3); letter-spacing: .02em; text-transform:uppercase; margin-bottom:12px; }
 .resource-tabs { display:flex; gap:4px; margin-bottom:14px; }
-.resource-tab { flex:1; padding:7px 4px; border-radius:var(--r-pill); border:1px solid var(--cream-3); background:#fff; color:var(--ink-3); font-family:var(--font); font-size:11px; font-weight:500; cursor:pointer; transition:all .2s; letter-spacing:.04em; text-align:center; }
+.resource-tab { flex:1; padding:7px 4px; border-radius:var(--r-pill); border:1px solid var(--cream-3); background:#fff; color:var(--ink-3); font-family:var(--font); font-size: calc(13px * var(--fs)); font-weight:500; cursor:pointer; transition:all .2s; letter-spacing:.04em; text-align:center; }
 .resource-tab.active { background:var(--gold-pale); border-color:var(--gold-line); color:var(--gold); }
 .resource-list { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
 .resource-item { display:flex; align-items:center; gap:10px; padding:10px 13px; background:#fff; border-radius:var(--r); border:1px solid var(--cream-3); }
-.resource-icon { width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+.resource-icon { width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size: calc(16px * var(--fs)); flex-shrink:0; }
 .resource-icon.link { background:var(--slate-pale); }
 .resource-icon.file { background:var(--sage-pale); }
 .resource-icon.img  { background:var(--gold-pale); }
-.resource-name { font-family:var(--font); font-size:14px; font-weight:500; color:var(--ink); line-height:1.3; }
-.resource-meta { font-family:var(--font); font-size:12px; color:var(--ink-4); margin-top:2px; font-style:italic; }
-.resource-empty { text-align:center; color:var(--ink-4); font-family:var(--font); font-size:13px; padding:18px 0; line-height:1.7; font-style:italic; }
-.upload-hint { font-family:var(--font); font-size:12px; color:var(--ink-4); text-align:center; margin-top:8px; line-height:1.6; font-style:italic; }
+.resource-name { font-family:var(--font); font-size: calc(16px * var(--fs)); font-weight:500; color:var(--ink); line-height:1.3; }
+.resource-meta { font-family:var(--font); font-size: calc(14px * var(--fs)); color:var(--ink-4); margin-top:2px;  }
+.resource-empty { text-align:center; color:var(--ink-4); font-family:var(--font); font-size: calc(15px * var(--fs)); padding:18px 0; line-height:1.7;  }
+.upload-hint { font-family:var(--font); font-size: calc(14px * var(--fs)); color:var(--ink-4); text-align:center; margin-top:8px; line-height:1.6;  }
 
 /* ── Calendar & scheduling ── */
 .cal { background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:12px 10px 10px; margin-bottom:12px; }
 .cal-head { display:flex; align-items:center; justify-content:space-between; padding:0 4px 10px; }
-.cal-title { font-family:var(--font); font-size:17px; font-weight:600; letter-spacing:.02em; }
-.cal-nav { width:30px; height:30px; border-radius:50%; border:1px solid var(--cream-3); background:#fff; color:var(--ink-2); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; }
+.cal-title { font-family:var(--font); font-size: calc(19px * var(--fs)); font-weight:600; letter-spacing:.02em; }
+.cal-nav { width:30px; height:30px; border-radius:50%; border:1px solid var(--cream-3); background:#fff; color:var(--ink-2); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size: calc(17px * var(--fs)); }
 .cal-nav:hover { border-color:var(--gold-line); color:var(--gold); }
-.cal-wk { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:10px; color:var(--ink-4); letter-spacing:.08em; margin-bottom:4px; }
+.cal-wk { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size: calc(12px * var(--fs)); color:var(--ink-4); letter-spacing: .02em; margin-bottom:4px; }
 .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
-.cal-day { position:relative; height:42px; border:none; background:none; border-radius:10px; cursor:pointer; font-family:var(--font); font-size:14px; color:var(--ink); display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:6px; transition:background .15s; }
+.cal-day { position:relative; height:42px; border:none; background:none; border-radius:10px; cursor:pointer; font-family:var(--font); font-size: calc(16px * var(--fs)); color:var(--ink); display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:6px; transition:background .15s; }
 .cal-day:hover { background:var(--cream-2); }
 .cal-day.out { color:var(--ink-4); opacity:.5; }
 .cal-day.past { color:var(--ink-4); }
@@ -490,44 +501,44 @@ select.input-field { appearance: none; cursor: pointer; }
 .cal-num { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; line-height:1; }
 .cal-dots { display:flex; gap:2px; margin-top:3px; height:5px; }
 .cal-dot { width:5px; height:5px; border-radius:50%; }
-.status-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:var(--r-pill); font-family:var(--font); font-size:11px; font-weight:600; letter-spacing:.04em; white-space:nowrap; }
+.status-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:var(--r-pill); font-family:var(--font); font-size: calc(13px * var(--fs)); font-weight:600; letter-spacing:.04em; white-space:nowrap; }
 .status-pill::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
 .sess { display:flex; gap:12px; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:border-color .15s, transform .15s; text-align:left; width:100%; font-family:var(--font); color:var(--ink); }
 .sess:hover { border-color:var(--gold-line); }
 .sess:active { transform:scale(.99); }
 .sess.past { opacity:.6; }
 .sess-time { min-width:48px; text-align:center; border-right:1px solid var(--cream-3); padding-right:12px; }
-.sess-start { font-size:16px; font-weight:600; line-height:1.1; }
-.sess-end { font-size:11px; color:var(--ink-4); margin-top:2px; }
+.sess-start { font-size: calc(18px * var(--fs)); font-weight:600; line-height:1.1; }
+.sess-end { font-size: calc(13px * var(--fs)); color:var(--ink-4); margin-top:2px; }
 .sess-body { flex:1; min-width:0; }
-.sess-title { font-size:15px; font-weight:600; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sess-meta { font-size:12px; color:var(--ink-3); margin-top:3px; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sess-title { font-size: calc(17px * var(--fs)); font-weight:600; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sess-meta { font-size: calc(14px * var(--fs)); color:var(--ink-3); margin-top:3px;  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .filter-row { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:12px; scrollbar-width:none; }
 .filter-row::-webkit-scrollbar { display:none; }
-.filter-chip { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:var(--r-pill); border:1px solid var(--cream-3); background:#fff; font-family:var(--font); font-size:12px; font-weight:600; color:var(--ink-3); cursor:pointer; }
-.filter-chip .n { font-size:12px; min-width:18px; height:18px; padding:0 5px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; background:var(--cream-2); color:var(--ink-2); }
+.filter-chip { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:var(--r-pill); border:1px solid var(--cream-3); background:#fff; font-family:var(--font); font-size: calc(14px * var(--fs)); font-weight:600; color:var(--ink-3); cursor:pointer; }
+.filter-chip .n { font-size: calc(14px * var(--fs)); min-width:18px; height:18px; padding:0 5px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; background:var(--cream-2); color:var(--ink-2); }
 .filter-chip.on { border-color:currentColor; }
 .seg { display:flex; background:var(--cream-2); border:1px solid var(--cream-3); border-radius:var(--r-pill); padding:3px; margin-bottom:14px; }
-.seg button { flex:1; padding:8px 6px; border:none; border-radius:var(--r-pill); background:transparent; font-family:var(--font); font-size:13px; font-weight:600; color:var(--ink-3); cursor:pointer; }
+.seg button { flex:1; padding:8px 6px; border:none; border-radius:var(--r-pill); background:transparent; font-family:var(--font); font-size: calc(15px * var(--fs)); font-weight:600; color:var(--ink-3); cursor:pointer; }
 .seg button.on { background:#fff; color:var(--ink); box-shadow:0 1px 4px rgba(28,26,23,.08); }
 .time-row { display:flex; gap:8px; align-items:center; }
 .time-row .input-field { flex:1; }
 .alert-card { border-radius:var(--r-lg); padding:14px 16px; margin-bottom:12px; border:1px solid; }
-.check-row { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid var(--cream-3); border-radius:var(--r); background:#fff; cursor:pointer; margin-bottom:10px; font-family:var(--font); font-size:14px; color:var(--ink); width:100%; text-align:left; }
+.check-row { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid var(--cream-3); border-radius:var(--r); background:#fff; cursor:pointer; margin-bottom:10px; font-family:var(--font); font-size: calc(16px * var(--fs)); color:var(--ink); width:100%; text-align:left; }
 .check-box { width:20px; height:20px; border-radius:5px; border:1.5px solid var(--ink-4); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .15s; }
 .check-row.on { border-color:rgba(74,123,90,.4); background:var(--sage-pale); }
 .check-row.on .check-box { background:var(--sage); border-color:var(--sage); }
-.detail-line { display:flex; gap:12px; padding:9px 0; border-bottom:1px solid var(--cream-3); font-family:var(--font); font-size:14px; }
+.detail-line { display:flex; gap:12px; padding:9px 0; border-bottom:1px solid var(--cream-3); font-family:var(--font); font-size: calc(16px * var(--fs)); }
 .detail-line:last-child { border-bottom:none; }
-.detail-line .k { width:64px; flex-shrink:0; font-size:11px; color:var(--ink-4); letter-spacing:.08em; text-transform:uppercase; font-weight:600; padding-top:2px; }
+.detail-line .k { width:64px; flex-shrink:0; font-size: calc(13px * var(--fs)); color:var(--ink-4); letter-spacing: .02em; text-transform:uppercase; font-weight:600; padding-top:2px; }
 .detail-line .v { flex:1; color:var(--ink); line-height:1.55; word-break:break-word; }
-.empty { text-align:center; color:var(--ink-3); font-size:13px; padding:28px 12px; line-height:1.7; }
-.toast { position:absolute; left:50%; bottom:80px; transform:translateX(-50%); background:var(--ink); color:var(--cream); padding:10px 18px; border-radius:var(--r-pill); font-family:var(--font); font-size:13px; z-index:80; box-shadow:0 6px 24px rgba(28,26,23,.25); animation:fadeUp .2s var(--ease-out) both; white-space:nowrap; }
+.empty { text-align:center; color:var(--ink-3); font-size: calc(15px * var(--fs)); padding:28px 12px; line-height:1.7; }
+.toast { position:absolute; left:50%; bottom:80px; transform:translateX(-50%); background:var(--ink); color:var(--cream); padding:10px 18px; border-radius:var(--r-pill); font-family:var(--font); font-size: calc(15px * var(--fs)); z-index:80; box-shadow:0 6px 24px rgba(28,26,23,.25); animation:fadeUp .2s var(--ease-out) both; white-space:nowrap; }
 /* ── Role switcher ── */
 .role-switch { cursor:pointer; font-family:var(--font); }
 .role-menu { position:absolute; right:0; top:calc(100% + 6px); z-index:61; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); box-shadow:0 8px 30px rgba(28,26,23,.12); min-width:150px; padding:6px; }
-.role-menu-h { font-size:10px; letter-spacing:.12em; color:var(--ink-4); padding:6px 10px 4px; font-weight:700; }
-.role-menu-item { display:flex; justify-content:space-between; width:100%; padding:9px 10px; border:none; background:none; border-radius:var(--r); font-family:var(--font); font-size:14px; color:var(--ink); cursor:pointer; }
+.role-menu-h { font-size: calc(12px * var(--fs)); letter-spacing: .02em; color:var(--ink-4); padding:6px 10px 4px; font-weight:700; }
+.role-menu-item { display:flex; justify-content:space-between; width:100%; padding:9px 10px; border:none; background:none; border-radius:var(--r); font-family:var(--font); font-size: calc(16px * var(--fs)); color:var(--ink); cursor:pointer; }
 .role-menu-item:hover, .role-menu-item.on { background:var(--cream-2); }
 .role-menu-item.on { color:var(--gold); font-weight:600; }
 
@@ -535,69 +546,243 @@ select.input-field { appearance: none; cursor: pointer; }
 .mod-tile { display:block; width:100%; text-align:left; font-family:var(--font); color:var(--ink); border:1px solid; border-left-width:3px; border-radius:var(--r-lg); padding:12px 14px; margin-bottom:10px; cursor:pointer; transition:transform .12s, box-shadow .15s; }
 .mod-tile:hover { box-shadow:0 4px 16px rgba(28,26,23,.06); }
 .mod-tile:active { transform:scale(.99); }
-.mod-mine { font-size:10px; border:1px solid; border-radius:var(--r-pill); padding:0 7px; background:rgba(255,255,255,.7); }
+.mod-mine { font-size: calc(12px * var(--fs)); border:1px solid; border-radius:var(--r-pill); padding:0 7px; background:rgba(255,255,255,.7); }
 .mod-clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin-top:4px; }
-.mod-foot { display:flex; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px solid rgba(28,26,23,.06); font-size:12px; color:var(--ink-3); }
+.mod-foot { display:flex; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px solid rgba(28,26,23,.06); font-size: calc(14px * var(--fs)); color:var(--ink-3); }
 .res { margin-top:4px; }
 .res-add { background:var(--cream-2); border:1.5px dashed var(--cream-4); border-radius:var(--r-lg); padding:12px; transition:all .15s; }
 .res-add.drag { border-color:var(--gold); background:var(--gold-pale); }
 .res-row { display:flex; gap:8px; align-items:center; }
 .res-row .input-field { flex:1; }
-.res-or { display:flex; align-items:center; gap:10px; margin:10px 0; color:var(--ink-4); font-size:11px; }
+.res-or { display:flex; align-items:center; gap:10px; margin:10px 0; color:var(--ink-4); font-size: calc(13px * var(--fs)); }
 .res-or::before, .res-or::after { content:''; flex:1; height:1px; background:var(--cream-4); }
-.res-hint { font-size:11px; color:var(--ink-4); text-align:center; margin-top:8px; font-style:italic; line-height:1.5; }
-.res-msg { font-size:13px; color:var(--rust); margin:8px 2px; }
-.res-head { font-size:11px; font-weight:700; color:var(--ink-3); letter-spacing:.12em; margin:16px 2px 8px; }
-.res-empty { font-size:13px; color:var(--ink-4); text-align:center; padding:16px 0; font-style:italic; }
+.res-hint { font-size: calc(13px * var(--fs)); color:var(--ink-4); text-align:center; margin-top:8px;  line-height:1.5; }
+.res-msg { font-size: calc(15px * var(--fs)); color:var(--rust); margin:8px 2px; }
+.res-head { font-size: calc(13px * var(--fs)); font-weight:700; color:var(--ink-3); letter-spacing: .02em; margin:16px 2px 8px; }
+.res-empty { font-size: calc(15px * var(--fs)); color:var(--ink-4); text-align:center; padding:16px 0;  }
 .res-item { display:flex; align-items:center; gap:10px; padding:9px 10px; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r); margin-bottom:6px; }
-.res-ic { width:40px; height:40px; flex-shrink:0; border-radius:8px; border:none; background:var(--cream-2); display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; overflow:hidden; padding:0; }
+.res-ic { width:40px; height:40px; flex-shrink:0; border-radius:8px; border:none; background:var(--cream-2); display:flex; align-items:center; justify-content:center; font-size: calc(20px * var(--fs)); cursor:pointer; overflow:hidden; padding:0; }
 .res-ic img { width:100%; height:100%; object-fit:cover; }
-.res-name { display:block; width:100%; text-align:left; border:none; background:none; padding:0; font-family:var(--font); font-size:14px; font-weight:600; color:var(--ink); cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.res-name { display:block; width:100%; text-align:left; border:none; background:none; padding:0; font-family:var(--font); font-size: calc(16px * var(--fs)); font-weight:600; color:var(--ink); cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .res-name:hover { color:var(--gold); }
-.res-meta { font-size:11px; color:var(--ink-4); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.res-meta { font-size: calc(13px * var(--fs)); color:var(--ink-4); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .res-acts { display:flex; gap:2px; flex-shrink:0; }
-.res-act { min-width:28px; height:28px; padding:0 6px; border:1px solid transparent; border-radius:6px; background:none; color:var(--ink-3); font-size:14px; cursor:pointer; font-family:var(--font); }
+.res-act { min-width:28px; height:28px; padding:0 6px; border:1px solid transparent; border-radius:6px; background:none; color:var(--ink-3); font-size: calc(16px * var(--fs)); cursor:pointer; font-family:var(--font); }
 .res-act:hover:not(:disabled) { background:var(--cream-2); border-color:var(--cream-3); }
 .res-act:disabled { opacity:.25; cursor:default; }
 .res-act.del:hover, .res-act.armed { color:var(--rust); }
-.res-act.armed { background:var(--rust-pale); font-size:11px; font-weight:700; }
+.res-act.armed { background:var(--rust-pale); font-size: calc(13px * var(--fs)); font-weight:700; }
 .viewer { position:fixed; inset:0; z-index:90; background:rgba(16,15,13,.92); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
 .viewer img { max-width:100%; max-height:80vh; border-radius:8px; }
-.viewer-bar { display:flex; gap:16px; align-items:center; margin-top:14px; color:#eee; font-size:13px; font-family:var(--font); }
+.viewer-bar { display:flex; gap:16px; align-items:center; margin-top:14px; color:#eee; font-size: calc(15px * var(--fs)); font-family:var(--font); }
 .viewer-bar a { color:var(--gold-light); }
 
 /* ── Journey ── */
 .ms { padding:11px 0; border-bottom:1px solid var(--cream-3); }
 .ms:last-child { border-bottom:none; }
 .ms-head { display:flex; align-items:center; gap:10px; }
-.ms-dot { width:22px; height:22px; border-radius:50%; border:1.5px solid var(--cream-4); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:12px; color:#8A6820; }
+.ms-dot { width:22px; height:22px; border-radius:50%; border:1.5px solid var(--cream-4); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size: calc(14px * var(--fs)); color:#8A6820; }
 .ms-done .ms-dot { background:var(--sage); border-color:var(--sage); }
 .ms-claimed .ms-dot { background:#FEF3D0; border-color:#C4A05A; }
-.ms-text { font-size:14px; font-weight:500; line-height:1.4; }
+.ms-text { font-size: calc(16px * var(--fs)); font-weight:500; line-height:1.4; }
 .ms-done .ms-text { color:var(--ink-2); }
-.ms-sub { font-size:11px; color:var(--ink-4); margin-top:2px; }
+.ms-sub { font-size: calc(13px * var(--fs)); color:var(--ink-4); margin-top:2px; }
 .ms-claimed .ms-sub { color:#8A6820; }
-.ms-claim { margin:8px 0 0 32px; padding:8px 12px; background:var(--cream-2); border-radius:var(--r); font-size:13px; color:var(--ink-2); line-height:1.6; }
-.ms-claim a { color:var(--slate); font-size:12px; }
+.ms-claim { margin:8px 0 0 32px; padding:8px 12px; background:var(--cream-2); border-radius:var(--r); font-size: calc(15px * var(--fs)); color:var(--ink-2); line-height:1.6; }
+.ms-claim a { color:var(--slate); font-size: calc(14px * var(--fs)); }
 .ms-form { margin:10px 0 0 32px; }
 .tl { position:relative; padding-left:34px; }
 .tl::before { content:''; position:absolute; left:13px; top:14px; bottom:14px; width:1px; background:var(--cream-3); }
 .tl-item { position:relative; margin-bottom:8px; }
-.tl-dot { position:absolute; left:-34px; top:12px; width:26px; height:26px; border-radius:50%; border:1.5px solid; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:var(--ink-3); z-index:1; }
+.tl-dot { position:absolute; left:-34px; top:12px; width:26px; height:26px; border-radius:50%; border:1.5px solid; display:flex; align-items:center; justify-content:center; font-size: calc(13px * var(--fs)); font-weight:700; color:var(--ink-3); z-index:1; }
 .tl-active .tl-dot span { color:#fff; }
 .tl-body { display:block; width:100%; text-align:left; font-family:var(--font); color:var(--ink); background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); padding:10px 14px; cursor:pointer; }
 .tl-active .tl-body { border-color:var(--gold-line); background:var(--gold-pale); }
 .tl-locked .tl-body { opacity:.55; }
 .tl-detail { margin:6px 0 4px 4px; padding:8px 12px; background:var(--cream-2); border-radius:var(--r); }
 .grow-row { width:100%; border-left:none; border-right:none; border-top:none; background:none; cursor:pointer; font-family:var(--font); color:var(--ink); }
-.fn-row { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; }
+.fn-row { display:flex; align-items:center; gap:8px; padding:4px 0; font-size: calc(14px * var(--fs)); }
 .fn-label { width:64px; flex-shrink:0; color:var(--ink-2); white-space:nowrap; }
 .fn-track { flex:1; height:12px; background:var(--cream-2); border-radius:6px; overflow:hidden; }
 .fn-bar { height:100%; border-radius:6px; min-width:2px; transition:width .4s var(--ease-out); }
 .fn-n { width:18px; text-align:right; font-weight:700; color:var(--ink); }
-.fn-days { width:62px; text-align:right; color:var(--ink-4); font-size:11px; }
-.fn-stuck { display:flex; justify-content:space-between; width:100%; gap:10px; padding:7px 0; border:none; border-top:1px solid rgba(138,104,32,.15); background:none; font-family:var(--font); font-size:13px; color:var(--ink-2); cursor:pointer; text-align:left; }
-.nav-badge { position:absolute; top:7px; left:calc(50% + 6px); min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--rust); color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; letter-spacing:0; }
+.fn-days { width:62px; text-align:right; color:var(--ink-4); font-size: calc(13px * var(--fs)); }
+.fn-stuck { display:flex; justify-content:space-between; width:100%; gap:10px; padding:7px 0; border:none; border-top:1px solid rgba(138,104,32,.15); background:none; font-family:var(--font); font-size: calc(15px * var(--fs)); color:var(--ink-2); cursor:pointer; text-align:left; }
+.nav-badge { position:absolute; top:7px; left:calc(50% + 6px); min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--rust); color:#fff; font-size: calc(12px * var(--fs)); font-weight:700; display:flex; align-items:center; justify-content:center; letter-spacing:0; }
+
+/* ════════════════════════════════════════
+   可讀性與操作性 v2
+   ・內文 16px 起跳、最小 13px；可用「字級」放大到 125%
+   ・按鈕／點擊區至少 44px（手指好點）
+   ・中文標籤不再全大寫、不加大字距、不用斜體
+════════════════════════════════════════ */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { font-size: calc(16px * var(--fs)); line-height: 1.6; font-feature-settings: normal; }
+@media (min-width: 520px) {
+  body { background: var(--cream-3); }
+  .app { box-shadow: 0 0 0 1px var(--cream-4), 0 10px 40px rgba(28,26,23,.08); }
+}
+button, input, select, textarea { font-family: var(--font); }
+:focus-visible { outline: 3px solid rgba(134,103,44,.45); outline-offset: 2px; }
+
+.header-logo-text, .login-brand, .istar-logo, .greeting-name, .topbar-title, .modal-title, .stat-num, .login-logo, .header-logo-mark, .cal-title { font-family: var(--font-display); }
+.greeting-name, .topbar-title, .modal-title { font-weight: 600; }
+.topbar-title { font-size: calc(26px * var(--fs)); }
+.app-header { padding: 12px 16px 10px; gap: 8px; }
+.header-right { gap: 8px; min-width: 0; }
+.hdr-name { font-size: calc(14px * var(--fs)); color: var(--ink-2); font-weight: 600; max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 400px) { .hdr-name { display: none; } }
+.role-badge { font-size: calc(12px * var(--fs)); padding: 5px 11px; min-height: 30px; display: inline-flex; align-items: center; }
+.logout-btn, .fs-btn { min-height: 36px; padding: 6px 12px; font-size: calc(14px * var(--fs)); color: var(--ink-2); letter-spacing: .02em; border-color: var(--cream-4); }
+.fs-btn { border-radius: var(--r-pill); border: 1px solid var(--cream-4); background: #fff; cursor: pointer; font-weight: 700; }
+.fs-menu { position:absolute; right:0; top:calc(100% + 6px); z-index:61; background:#fff; border:1px solid var(--cream-3); border-radius:var(--r-lg); box-shadow:0 8px 30px rgba(28,26,23,.14); padding:6px; min-width: 180px; }
+.fs-opt { display:flex; justify-content:space-between; align-items:center; width:100%; padding:10px 12px; border:none; background:none; border-radius:var(--r); cursor:pointer; color:var(--ink); min-height:44px; }
+.fs-opt.on, .fs-opt:hover { background: var(--cream-2); }
+.fs-opt.on { color: var(--gold); font-weight: 700; }
+
+.content { padding: 8px 16px 32px; }
+.sec-h { font-size: calc(16px * var(--fs)); font-weight: 700; color: var(--ink); letter-spacing: .02em; text-transform: none; margin: 22px 2px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.input-label { font-size: calc(14px * var(--fs)); color: var(--ink-2); letter-spacing: .01em; text-transform: none; font-weight: 600; margin-bottom: 6px; display: block; }
+.input-field { font-size: calc(17px * var(--fs)); padding: 12px 14px; min-height: 48px; background: #fff; border-color: var(--cream-4); }
+.input-field::placeholder { color: #9A958A; }
+.stat-lbl, .detail-line .k, .detail-meta-lbl, .inner-tab, .nav-item, .res-head, .role-menu-h, .feedback-author, .record-note-label { text-transform: none; letter-spacing: .02em; }
+.stat-lbl { font-size: calc(13px * var(--fs)); color: var(--ink-3); }
+.stat-num { font-size: calc(34px * var(--fs)); }
+.stat-of { font-size: .55em; color: var(--ink-3); }
+.detail-line .k { width: 72px; font-size: calc(14px * var(--fs)); color: var(--ink-3); font-weight: 600; }
+.detail-line .v { font-size: calc(16px * var(--fs)); }
+.inner-tab { font-size: calc(15px * var(--fs)); padding: 13px 6px; color: var(--ink-3); font-weight: 600; border-bottom-width: 2.5px; }
+.inner-tab.active { color: var(--ink); border-bottom-color: var(--gold); }
+
+/* 按鈕 */
+.btn { min-height: 44px; padding: 10px 18px; font-size: calc(16px * var(--fs)); letter-spacing: .02em; border-color: var(--cream-4); font-weight: 600; text-decoration: none; }
+.btn-sm { min-height: 38px; padding: 7px 14px; font-size: calc(15px * var(--fs)); }
+.btn-lg { min-height: 54px; padding: 14px 20px; font-size: calc(18px * var(--fs)); border-radius: var(--r-lg); }
+.btn:disabled, .btn-primary:disabled { opacity: .45; }
+.btn-row { gap: 10px; }
+.link-btn { border: none; background: none; padding: 6px 2px; min-height: 36px; cursor: pointer; color: var(--gold); font-size: calc(15px * var(--fs)); font-weight: 600; text-transform: none; letter-spacing: 0; }
+.chip { font-size: calc(15px * var(--fs)); padding: 9px 15px; min-height: 40px; color: var(--ink-2); border-color: var(--cream-4); display: inline-flex; align-items: center; }
+.filter-chip { font-size: calc(15px * var(--fs)); padding: 8px 14px; min-height: 40px; }
+.seg button { font-size: calc(15px * var(--fs)); padding: 10px 6px; min-height: 42px; }
+.check-row { font-size: calc(16px * var(--fs)); min-height: 52px; }
+.check-box { width: 24px; height: 24px; }
+.toggle-lbl { font-size: calc(16px * var(--fs)); }
+.cal-nav { width: 40px; height: 40px; font-size: calc(20px * var(--fs)); }
+.cal-day { height: 48px; font-size: calc(16px * var(--fs)); }
+.cal-num { width: 30px; height: 30px; }
+.cal-dot { width: 6px; height: 6px; }
+.cal-wk { font-size: calc(13px * var(--fs)); color: var(--ink-3); }
+.res-act { min-width: 38px; height: 38px; font-size: calc(17px * var(--fs)); }
+.res-ic { width: 46px; height: 46px; }
+
+/* 底部導覽：字放大、點擊區加大 */
+.bottom-nav { height: calc(66px + env(safe-area-inset-bottom, 0px)); }
+.nav-item { font-size: calc(13px * var(--fs)); color: var(--ink-3); gap: 4px; font-weight: 600; min-width: 0; }
+.nav-item svg { width: 24px; height: 24px; }
+.nav-item.active { color: var(--gold); }
+.nav-item.active::before { width: 32px; height: 3px; }
+.nav-badge { font-size: calc(11px * var(--fs)); min-width: 18px; height: 18px; border-radius: 9px; }
+
+/* 卡片與清單 */
+.card, .card-glow, .card-glass { padding: 16px; }
+.card-sm { padding: 12px 14px; }
+.sess { padding: 14px; gap: 12px; }
+.sess-time { min-width: 58px; }
+.sess-date { font-size: calc(13px * var(--fs)); color: var(--gold); font-weight: 700; margin-bottom: 3px; white-space: nowrap; }
+.sess-start { font-size: calc(18px * var(--fs)); }
+.sess-end { font-size: calc(14px * var(--fs)); color: var(--ink-3); }
+.sess-title { font-size: calc(17px * var(--fs)); }
+.sess-meta { font-size: calc(14px * var(--fs)); color: var(--ink-3); }
+.sess.past { opacity: .75; }
+.status-pill { font-size: calc(13px * var(--fs)); padding: 3px 10px; }
+.badge { font-size: calc(13px * var(--fs)); padding: 3px 10px; }
+.empty { font-size: calc(15px * var(--fs)); color: var(--ink-3); }
+.alert-card { padding: 16px; }
+.alert-t { font-size: calc(17px * var(--fs)); font-weight: 700; }
+.alert-s { font-size: calc(14px * var(--fs)); color: var(--ink-2); margin: 3px 0 10px; }
+.hint { font-size: calc(14px * var(--fs)); color: var(--ink-3); margin-top: 8px; line-height: 1.6; }
+.coach-name { font-size: calc(17px * var(--fs)); font-weight: 600; }
+.coach-tag { font-size: calc(14px * var(--fs)); color: var(--ink-3); }
+.coach-row { padding: 12px 0; min-height: 56px; }
+.modal-sheet { padding: 20px 18px calc(28px + env(safe-area-inset-bottom, 0px)); max-height: 92%; }
+.modal-title { font-size: calc(24px * var(--fs)); }
+.modal-handle { width: 40px; height: 4px; }
+.toast { font-size: calc(15px * var(--fs)); padding: 12px 20px; bottom: 90px; white-space: normal; max-width: 90%; text-align: center; }
+.login-error, .login-ok { font-size: calc(15px * var(--fs)); line-height: 1.6; text-align: left; }
+.login-ok { background: var(--sage-pale); border: 1px solid rgba(63,110,78,.25); border-radius: var(--r); padding: 11px 14px; color: var(--sage); margin-bottom: 14px; }
+.login-no-access { font-size: calc(14px * var(--fs)); color: var(--ink-2); }
+.login-wrap { padding: 28px 20px; justify-content: flex-start; padding-top: 6vh; }
+.login-card { padding: 24px 20px; }
+.pw-wrap { position: relative; }
+.pw-wrap .input-field { padding-right: 72px; }
+.pw-eye { position: absolute; right: 6px; top: 6px; height: 36px; padding: 0 12px; border: none; background: var(--cream-2); border-radius: var(--r); color: var(--ink-2); cursor: pointer; font-size: calc(14px * var(--fs)); font-weight: 600; }
+.cred { margin-top: 10px; padding: 10px 12px; background: #fff; border-radius: var(--r); color: var(--ink); text-align: left; font-size: calc(15px * var(--fs)); line-height: 1.8; }
+
+/* 出席 */
+.attend { margin-top: 4px; margin-bottom: 8px; background: #fff; border: 1px solid var(--cream-3); border-radius: var(--r-lg); padding: 14px 16px; }
+.attend-h { display:flex; justify-content:space-between; align-items:center; font-size: calc(17px * var(--fs)); font-weight: 700; margin-bottom: 8px; }
+.attend-pill { display:inline-flex; align-items:center; padding: 3px 10px; border-radius: var(--r-pill); font-size: calc(13px * var(--fs)); font-weight: 700; white-space: nowrap; }
+.steps { display:flex; flex-direction:column; }
+.step { display:flex; gap:12px; padding: 9px 0; position: relative; }
+.step:not(:last-child)::after { content:''; position:absolute; left:15px; top:42px; bottom:-6px; width:2px; background: var(--cream-3); }
+.step-dot { width:32px; height:32px; border-radius:50%; border:2px solid var(--cream-4); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:700; color: var(--ink-3); background:#fff; font-size: calc(15px * var(--fs)); z-index:1; }
+.step.ok .step-dot { background: var(--sage); border-color: var(--sage); color:#fff; }
+.step-t { font-size: calc(16px * var(--fs)); font-weight: 700; }
+.step-s { font-size: calc(14px * var(--fs)); color: var(--ink-3); margin-top: 2px; line-height: 1.5; }
+.step-s b { color: var(--ink); }
+.ph-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.ph { position: relative; aspect-ratio: 1; border-radius: var(--r); overflow: hidden; background: var(--cream-2); }
+.ph-img { width:100%; height:100%; border:none; padding:0; cursor:zoom-in; background:none; display:block; }
+.ph-img img { width:100%; height:100%; object-fit: cover; display:block; }
+.ph-del { position:absolute; top:4px; right:4px; min-width:32px; height:32px; border-radius:16px; border:none; background: rgba(28,26,23,.6); color:#fff; cursor:pointer; font-size: calc(14px * var(--fs)); padding: 0 8px; }
+.ph-del.armed { background: var(--rust); font-weight: 700; }
+.ph-add { border: 2px dashed var(--cream-4); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; color: var(--ink-2); font-size: calc(14px * var(--fs)); font-weight: 600; background: var(--cream-2); }
+.ph-add:hover { border-color: var(--gold); color: var(--gold); }
+
+/* 學員首頁：今天的課 */
+.today-card { border-radius: var(--r-xl); padding: 16px; margin-bottom: 12px; border: 1.5px solid var(--cream-4); background: #fff; }
+.today-card.st-open { border-color: #2F5E8A; background: #F2F7FC; box-shadow: 0 4px 20px rgba(47,94,138,.12); }
+.today-card.st-inClass, .today-card.st-done, .today-card.st-needOut { border-color: rgba(47,107,69,.35); background: #F3F9F5; }
+.today-main { display:block; width:100%; text-align:left; border:none; background:none; padding:0; cursor:pointer; color: var(--ink); }
+.today-k { font-size: calc(14px * var(--fs)); font-weight: 700; color: var(--gold); }
+.today-t { font-size: calc(21px * var(--fs)); font-weight: 700; margin-top: 4px; line-height: 1.35; }
+.today-m { font-size: calc(15px * var(--fs)); color: var(--ink-3); margin-top: 4px; }
+.today-note { margin-top: 12px; padding: 10px 12px; border-radius: var(--r); background: var(--cream-2); font-size: calc(15px * var(--fs)); color: var(--ink-2); font-weight: 600; }
+.today-note.ok { background: #E3F1E7; color: #2F6B45; }
+
+/* 時數報表 */
+.hr-row { display:flex; align-items:center; gap:12px; width:100%; padding: 12px 4px; border:none; border-bottom: 1px solid var(--cream-3); background:none; cursor:pointer; text-align:left; color: var(--ink); }
+.hr-row:last-child { border-bottom: none; }
+.hr-row.on { background: var(--gold-pale); border-radius: var(--r); }
+.hr-name { font-size: calc(17px * var(--fs)); font-weight: 700; }
+.hr-sub { font-size: calc(14px * var(--fs)); color: var(--ink-3); margin-top: 2px; }
+.hr-h { font-size: calc(24px * var(--fs)); font-weight: 700; color: var(--gold); text-align: right; flex-shrink: 0; font-family: var(--font-display); }
+.hr-h span { display:block; font-size: calc(12px * var(--fs)); color: var(--ink-3); font-family: var(--font); font-weight: 600; }
+.prog-track { height: 6px; border-radius: 3px; }
+.prog-fill { border-radius: 3px; }
+
+/* 管理員：本月交付 */
+.deliver-card { display:block; width:100%; text-align:left; cursor:pointer; color: var(--ink); border-left: 3px solid var(--sage); }
+.deliver-h { display:flex; justify-content:space-between; align-items:center; font-size: calc(17px * var(--fs)); font-weight: 700; }
+.deliver-row { display:grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+.deliver-row b { display:block; font-size: calc(22px * var(--fs)); font-family: var(--font-display); }
+.deliver-row span { font-size: calc(13px * var(--fs)); color: var(--ink-3); }
+
+
+/* 頁首不換行 */
+.header-brand { flex-shrink: 0; gap: 7px; }
+.header-logo-text { white-space: nowrap; letter-spacing: .08em; font-size: calc(16px * var(--fs)); }
+@media (max-width: 440px) { .header-logo-text span { display: none; } }
+/* 頁首是固定的操作列：不跟著字級放大，避免擠出畫面 */
+.app-header .role-badge { font-size: 14px; }
+.app-header .logout-btn, .app-header .fs-btn { font-size: 15px; }
+.app-header .header-logo-text { font-size: 16px; }
+.app-header .hdr-name { font-size: 14px; }
+.header-right { flex-shrink: 1; justify-content: flex-end; }
+.role-badge, .logout-btn, .fs-btn { white-space: nowrap; flex-shrink: 0; }
+.role-badge { letter-spacing: .02em; text-transform: none; font-weight: 700; }
+/* 減少動態效果（系統設定開啟時） */
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 `;
 
 
@@ -767,7 +952,7 @@ function ModalAddModule({ onClose, editData }) {
         <div className="modal-title">{isEdit ? "編輯課程模組" : "新增課程模組"}</div>
 
         {error && (
-          <div style={{ background:"var(--rust-pale)", border:"1px solid rgba(139,58,42,.2)", borderRadius:"var(--r)", padding:"10px 14px", fontSize:13, color:"var(--rust)", marginBottom:14 }}>
+          <div style={{ background:"var(--rust-pale)", border:"1px solid rgba(139,58,42,.2)", borderRadius:"var(--r)", padding:"10px 14px", fontSize:fz(15), color:"var(--rust)", marginBottom:14 }}>
             {error}
           </div>
         )}
@@ -875,7 +1060,7 @@ function ModalAddRecord({ onClose, prefill, editData }) {
         <div className="modal-title">{isEdit ? "編輯上課記錄" : "新增上課記錄"}</div>
 
         {error && (
-          <div style={{ background:"var(--rust-pale)", border:"1px solid rgba(139,58,42,.2)", borderRadius:"var(--r)", padding:"10px 14px", fontSize:13, color:"var(--rust)", marginBottom:14 }}>
+          <div style={{ background:"var(--rust-pale)", border:"1px solid rgba(139,58,42,.2)", borderRadius:"var(--r)", padding:"10px 14px", fontSize:fz(15), color:"var(--rust)", marginBottom:14 }}>
             {error}
           </div>
         )}
@@ -1144,7 +1329,7 @@ function ResourceManager({ moduleId, canManage, canAdd = true }) {
             </button>
             <div style={{ flex:1, minWidth:0 }}>
               {editing?.id === r.id ? (
-                <input className="input-field" style={{ marginBottom:0, padding:"6px 10px", fontSize:14 }} autoFocus
+                <input className="input-field" style={{ marginBottom:0, padding:"6px 10px", fontSize:fz(16) }} autoFocus
                   value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })}
                   onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditing(null); }}
                   onBlur={saveName} />
@@ -1196,15 +1381,15 @@ function ModuleSheet({ m, isOwn, onClose, onEdit, onDelete }) {
         <div className="modal-handle" />
         <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
           <span className="cal-dot" style={{ background: color.border, width:8, height:8 }} />
-          <span style={{ fontSize:12, color: color.border, fontWeight:700 }}>{m.coachName || "—"} 教練{isOwn ? " · 我的課程" : ""}</span>
+          <span style={{ fontSize:fz(14), color: color.border, fontWeight:700 }}>{m.coachName || "—"} 教練{isOwn ? " · 我的課程" : ""}</span>
         </div>
         <div className="modal-title" style={{ marginBottom:8 }}>{m.title}</div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
-          {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background: color.bg, color: color.border, border:`1px solid ${color.border}`, fontSize:11 }}>{s}</span>)}
-          {m.duration && <span className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:11 }}>⏱ {m.duration}</span>}
-          {(m.method||[]).map(mt => <span key={mt} className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:11 }}>{mt}</span>)}
+          {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background: color.bg, color: color.border, border:`1px solid ${color.border}`, fontSize:fz(13) }}>{s}</span>)}
+          {m.duration && <span className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(13) }}>⏱ {m.duration}</span>}
+          {(m.method||[]).map(mt => <span key={mt} className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(13) }}>{mt}</span>)}
         </div>
-        {m.outline && <div style={{ fontSize:14, color:"var(--ink-2)", lineHeight:1.7, whiteSpace:"pre-wrap", marginBottom:12 }}>{m.outline}</div>}
+        {m.outline && <div style={{ fontSize:fz(16), color:"var(--ink-2)", lineHeight:1.7, whiteSpace:"pre-wrap", marginBottom:12 }}>{m.outline}</div>}
 
         {isOwn && !confirmDel && (
           <div className="btn-row" style={{ marginTop:0, marginBottom:14 }}>
@@ -1214,7 +1399,7 @@ function ModuleSheet({ m, isOwn, onClose, onEdit, onDelete }) {
         )}
         {confirmDel && (
           <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)" }}>
-            <div style={{ fontSize:14, marginBottom:10 }}>確定刪除「{m.title}」嗎？已分配給學員的會一併失效。</div>
+            <div style={{ fontSize:fz(16), marginBottom:10 }}>確定刪除「{m.title}」嗎？已分配給學員的會一併失效。</div>
             <div className="btn-row" style={{ marginTop:0 }}>
               <button className="btn btn-sm" onClick={() => setConfirmDel(false)}>返回</button>
               <button className="btn btn-sm" style={{ background:"var(--rust)", color:"#fff", borderColor:"var(--rust)" }} onClick={() => onDelete(m.id)}>確認刪除</button>
@@ -1223,7 +1408,7 @@ function ModuleSheet({ m, isOwn, onClose, onEdit, onDelete }) {
         )}
 
         <ResourceManager moduleId={m.id} canManage={isOwn || role === "admin"} canAdd={isOwn || role === "admin"} />
-        {!isOwn && role !== "admin" && <div style={{ fontSize:12, color:"var(--ink-4)", textAlign:"center", marginTop:6, fontStyle:"italic" }}>其他教練的課程僅可檢視</div>}
+        {!isOwn && role !== "admin" && <div style={{ fontSize:fz(14), color:"var(--ink-4)", textAlign:"center", marginTop:6 }}>其他教練的課程僅可檢視</div>}
         <button className="btn" style={{ width:"100%", marginTop:12, border:"none", background:"none", color:"var(--ink-3)" }} onClick={onClose}>關閉</button>
       </div>
     </div>
@@ -1324,26 +1509,26 @@ function JourneyView({ journey, mode, studentUid, onChanged, related = [], previ
       <div className="card-gold" style={{ marginBottom:14 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
-            <div style={{ fontSize:10, color:"var(--gold)", letterSpacing:".12em", fontWeight:700, textTransform:"uppercase" }}>
+            <div style={{ fontSize:fz(12), color:"var(--gold)", letterSpacing:".02em", fontWeight:700, textTransform:"uppercase" }}>
               {finished ? "✦ 已成為星辰聯盟成員" : `第 ${cur} / 9 階段 · ${curStage.phase}`}
             </div>
-            <div style={{ fontFamily:"var(--font)", fontSize:28, fontWeight:600, marginTop:4 }}>{curStage.name}</div>
-            <div style={{ fontSize:13, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>{curStage.goal}</div>
+            <div style={{ fontFamily:"var(--font)", fontSize:fz(30), fontWeight:600, marginTop:4 }}>{curStage.name}</div>
+            <div style={{ fontSize:fz(15), color:"var(--ink-3)", marginTop:2 }}>{curStage.goal}</div>
           </div>
           <div style={{ textAlign:"right" }}>
-            <div style={{ fontFamily:"var(--font)", fontSize:28, fontWeight:600, color:"var(--gold)" }}>{overallProgress(journey)}%</div>
-            <div style={{ fontSize:10, color:"var(--ink-4)", letterSpacing:".08em" }}>整體旅程</div>
+            <div style={{ fontFamily:"var(--font)", fontSize:fz(30), fontWeight:600, color:"var(--gold)" }}>{overallProgress(journey)}%</div>
+            <div style={{ fontSize:fz(12), color:"var(--ink-4)", letterSpacing:".02em" }}>整體旅程</div>
           </div>
         </div>
         <div style={{ marginTop:14 }}><StageBar journey={journey} /></div>
-        <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--ink-3)", marginTop:6 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", fontSize:fz(13), color:"var(--ink-3)", marginTop:6 }}>
           <span>本階段 {prog.done}/{prog.total} 個里程碑{prog.claimed ? ` · ${prog.claimed} 個待確認` : ""}</span>
           {!preview && !finished && <span>已進行 {days} 天</span>}
         </div>
       </div>
 
       {preview && (
-        <div className="alert-card" style={{ background:"var(--slate-pale)", borderColor:"rgba(58,74,107,.2)", fontSize:13, color:"var(--slate)" }}>
+        <div className="alert-card" style={{ background:"var(--slate-pale)", borderColor:"rgba(58,74,107,.2)", fontSize:fz(15), color:"var(--slate)" }}>
           你的成長紀錄還在建立中，教練開通後就能開始回報進度。
         </div>
       )}
@@ -1365,18 +1550,18 @@ function JourneyView({ journey, mode, studentUid, onChanged, related = [], previ
             ))}
           </div>
           {canAdvance(journey) && mode === "student" && (
-            <div className="alert-card" style={{ background:"var(--sage-pale)", borderColor:"rgba(74,123,90,.25)", color:"var(--sage)", fontSize:14 }}>
+            <div className="alert-card" style={{ background:"var(--sage-pale)", borderColor:"rgba(74,123,90,.25)", color:"var(--sage)", fontSize:fz(16) }}>
               ✓ 本階段的里程碑都完成了！教練確認後就會升到下一階段「{stageOf(cur + 1).name}」。
             </div>
           )}
-          <div style={{ fontSize:12, color:"var(--ink-3)", margin:"-2px 2px 4px", fontStyle:"italic" }}>
+          <div style={{ fontSize:fz(14), color:"var(--ink-3)", margin:"-2px 2px 4px" }}>
             對應課程：{curStage.course}
           </div>
           {related.length > 0 && (
             <div style={{ display:"flex", flexWrap:"wrap", gap:6, margin:"8px 0" }}>
               {related.map(m => {
                 const c = getCoachModuleColor(m.coachId || "");
-                return <span key={m.id} className="badge" style={{ background:c.bg, color:c.border, border:`1px solid ${c.border}`, fontSize:12 }}>✦ {m.title}</span>;
+                return <span key={m.id} className="badge" style={{ background:c.bg, color:c.border, border:`1px solid ${c.border}`, fontSize:fz(14) }}>✦ {m.title}</span>;
               })}
             </div>
           )}
@@ -1399,25 +1584,25 @@ function JourneyView({ journey, mode, studentUid, onChanged, related = [], previ
               <button className="tl-body" onClick={() => setOpenStage(expanded ? null : s.n)}>
                 <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
                   <div>
-                    <span style={{ fontSize:10, color: s.color, fontWeight:700, letterSpacing:".08em" }}>{s.tag}</span>
-                    <div style={{ fontSize:15, fontWeight:600 }}>{String(s.n).padStart(2,"0")}. {s.name}</div>
+                    <span style={{ fontSize:fz(12), color: s.color, fontWeight:700, letterSpacing:".02em" }}>{s.tag}</span>
+                    <div style={{ fontSize:fz(17), fontWeight:600 }}>{String(s.n).padStart(2,"0")}. {s.name}</div>
                   </div>
-                  <div style={{ textAlign:"right", fontSize:11, color:"var(--ink-3)", flexShrink:0 }}>
+                  <div style={{ textAlign:"right", fontSize:fz(13), color:"var(--ink-3)", flexShrink:0 }}>
                     {st === "done" && (info.skipped ? "已具備" : <>完成 {info.completedAt}<br/>{daysBetween(info.startedAt, info.completedAt)} 天</>)}
                     {st === "active" && <span style={{ color:"var(--gold)", fontWeight:700 }}>進行中 {p.pct}%</span>}
                     {st === "locked" && <IcLock />}
                   </div>
                 </div>
-                <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>{s.goal}</div>
+                <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:2 }}>{s.goal}</div>
               </button>
               {expanded && st !== "active" && (
                 <div className="tl-detail">
                   {s.milestones.map((t, i) => (
-                    <div key={i} style={{ display:"flex", gap:8, fontSize:13, padding:"3px 0", color: milestoneState(journey, s.n, i) === "done" ? "var(--ink-2)" : "var(--ink-4)" }}>
+                    <div key={i} style={{ display:"flex", gap:8, fontSize:fz(15), padding:"3px 0", color: milestoneState(journey, s.n, i) === "done" ? "var(--ink-2)" : "var(--ink-4)" }}>
                       <span>{milestoneState(journey, s.n, i) === "done" ? "✓" : "○"}</span><span>{t}</span>
                     </div>
                   ))}
-                  <div style={{ fontSize:12, color:"var(--ink-4)", marginTop:4 }}>對應課程：{s.course}</div>
+                  <div style={{ fontSize:fz(14), color:"var(--ink-4)", marginTop:4 }}>對應課程：{s.course}</div>
                 </div>
               )}
             </div>
@@ -1449,7 +1634,7 @@ function StudentJourneySheet({ student, onClose, onChanged }) {
           <div className="coach-av" style={(() => { const c = getAvatarColor(student.name || ""); return { background:c.bg, color:c.text }; })()}>{student.name?.slice(0,2)}</div>
           <div>
             <div className="modal-title" style={{ marginBottom:0 }}>{student.name} 的成長路徑</div>
-            <div style={{ fontSize:12, color:"var(--ink-3)" }}>{student.courseType || "—"}</div>
+            <div style={{ fontSize:fz(14), color:"var(--ink-3)" }}>{student.courseType || "—"}</div>
           </div>
         </div>
         {!j ? <div className="empty">載入中…</div> : (
@@ -1468,7 +1653,7 @@ function StudentJourneySheet({ student, onClose, onChanged }) {
               onClick={() => run(() => setStageNote(student.uid, j.currentStage, note.trim()), "提醒已儲存")}>儲存提醒</button>
 
             <div className="sec-h">調整目前階段</div>
-            <div style={{ fontSize:12, color:"var(--ink-3)", marginBottom:8, fontStyle:"italic" }}>學員中途加入或已具備能力時使用；之前的階段會標記為「已具備」。</div>
+            <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginBottom:8 }}>學員中途加入或已具備能力時使用；之前的階段會標記為「已具備」。</div>
             <div className="res-row">
               <select className="input-field" style={{ marginBottom:0 }} value={target} onChange={e => setTarget(e.target.value)}>
                 <option value="">選擇階段…</option>
@@ -1511,7 +1696,7 @@ function AllianceFunnel({ journeys, students, onOpen }) {
                 </div>
               );
             })}
-            <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"var(--ink-3)", marginTop:10, paddingTop:10, borderTop:"1px solid var(--cream-3)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", fontSize:fz(14), color:"var(--ink-3)", marginTop:10, paddingTop:10, borderTop:"1px solid var(--cream-3)" }}>
               <span>共 {journeys.length} 位學員</span>
               <span>已成為聯盟成員 <b style={{ color:"var(--gold)" }}>{members}</b> 位</span>
             </div>
@@ -1520,7 +1705,7 @@ function AllianceFunnel({ journeys, students, onOpen }) {
       </div>
       {stuck.length > 0 && (
         <div className="alert-card" style={{ background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)" }}>
-          <div style={{ fontSize:14, fontWeight:700, color:"#8A6820", marginBottom:6 }}>{stuck.length} 位學員在同一階段超過 30 天</div>
+          <div style={{ fontSize:fz(16), fontWeight:700, color:"#8A6820", marginBottom:6 }}>{stuck.length} 位學員在同一階段超過 30 天</div>
           {stuck.slice(0, 5).map(j => (
             <button key={j.id} className="fn-stuck" onClick={() => onOpen({ uid: j.id, name: nameOf(j.id), courseType: students.find(s => s.uid === j.id)?.courseType })}>
               <span>{nameOf(j.id)}</span><span>{stageOf(j.currentStage).name} · {j.days} 天 →</span>
@@ -1578,7 +1763,7 @@ function ScheduleCalendar({ sessions, selected, onSelect }) {
         <button className="cal-nav" onClick={() => shift(-1)} aria-label="上個月">‹</button>
         <div style={{ textAlign:"center" }}>
           <div className="cal-title">{ym.y} 年 {ym.m + 1} 月</div>
-          <button style={{ border:"none", background:"none", fontFamily:"var(--font)", fontSize:11, color:"var(--gold)", cursor:"pointer", fontStyle:"italic" }}
+          <button style={{ border:"none", background:"none", fontFamily:"var(--font)", fontSize:fz(13), color:"var(--gold)", cursor:"pointer" }}
             onClick={() => { const t = new Date(); setYm({ y:t.getFullYear(), m:t.getMonth() }); onSelect(today); }}>
             回到今天
           </button>
@@ -1606,7 +1791,7 @@ function ScheduleCalendar({ sessions, selected, onSelect }) {
       </div>
       <div style={{ display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap", marginTop:10, paddingTop:10, borderTop:"1px solid var(--cream-3)" }}>
         {["open","pending","confirmed","reschedule"].map(k => (
-          <span key={k} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--ink-3)" }}>
+          <span key={k} style={{ display:"flex", alignItems:"center", gap:5, fontSize:fz(13), color:"var(--ink-3)" }}>
             <span className="cal-dot" style={{ background: SESSION_STATUS[k].color }} />{SESSION_STATUS[k].label}
           </span>
         ))}
@@ -1625,24 +1810,326 @@ function SessionItem({ s, viewer, onOpen, showDate }) {
   return (
     <button className={"sess" + (isPast(s) ? " past" : "")} style={{ borderLeft:`3px solid ${color.border}` }} onClick={() => onOpen(s)}>
       <div className="sess-time">
-        {showDate && <div style={{ fontSize:10, color:"var(--gold)", fontWeight:700, marginBottom:3, letterSpacing:".04em" }}>{relativeDayLabel(s.date)}</div>}
+        {showDate && <div className="sess-date">{relativeDayLabel(s.date)}</div>}
         <div className="sess-start">{s.start}</div>
         <div className="sess-end">{s.end}</div>
       </div>
       <div className="sess-body">
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
           <div className="sess-title">{s.moduleTitle || "一對一課程"}</div>
-          <StatusPill status={s.status} />
+          {s.status === "confirmed" && attendanceState(s) !== "upcoming" ? <AttendBadge s={s} /> : <StatusPill status={s.status} />}
         </div>
-        <div className="sess-meta">{who}{extra} · {s.method || "線上"}{s.recorded ? " · 已記錄" : ""}</div>
+        <div className="sess-meta">{who}{extra} · {s.method || "線上"}{s.recorded ? " · 已記錄" : ""}{s.photoCount ? ` · 📷 ${s.photoCount}` : ""}</div>
       </div>
     </button>
   );
 }
 
+/* ════════════════════════════════════════
+   出席：簽到／上課證明／簽退
+════════════════════════════════════════ */
+function AttendBadge({ s, now }) {
+  const st = attendanceState(s, now);
+  const a = ATTEND[st];
+  if (!a || st === "upcoming") return null;
+  return (
+    <span className="attend-pill" style={{ background:a.bg, color:a.color }}>
+      {st === "done" ? `✓ ${formatMinutes(deliveredMinutes(s))}` : a.label}
+    </span>
+  );
+}
+
+// 上課照片：盡量保留清晰度，但每張壓在 Firestore 單筆 1MB 以內
+async function compressPhoto(file) {
+  const im = await loadImage(await readAsDataUrl(file));
+  const draw = (max, q) => {
+    const k = Math.min(1, max / Math.max(im.width, im.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(im, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", q);
+  };
+  let data = "";
+  for (const [max, q] of [[1600, .8], [1280, .72], [1024, .65], [800, .6]]) {
+    data = draw(max, q);
+    if (data.length < 900000) break;
+  }
+  return { data, thumb: draw(320, .7), size: Math.round((data.length - data.indexOf(",") - 1) * 0.75) };
+}
+
+function AttendancePanel({ s, viewer, onUpdated, onWriteRecord }) {
+  const { checkInSession, checkOutSession, fetchSessionPhotos, addSessionPhoto, deleteSessionPhoto } = useAuth();
+  const [now,     setNow]     = useState(new Date());
+  const [photos,  setPhotos]  = useState([]);
+  const [busy,    setBusy]    = useState("");
+  const [err,     setErr]     = useState("");
+  const [summary, setSummary] = useState("");
+  const [view,    setView]    = useState(null);
+  const [armed,   setArmed]   = useState("");
+  const fileRef = useRef(null);
+  const staff = viewer === "coach" || viewer === "admin";
+  const st = attendanceState(s, now);
+  const win = checkInWindow(s, now);
+
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
+  useEffect(() => { fetchSessionPhotos(s.id).then(setPhotos).catch(() => {}); }, [s.id, s.photoCount]);
+
+  const act = async (key, fn, msg) => {
+    setBusy(key); setErr("");
+    const res = await fn();
+    setBusy("");
+    if (res?.success === false) { setErr("操作失敗，請再試一次。" + (/permission/i.test(res.error || "") ? "（沒有權限）" : "")); return false; }
+    await onUpdated?.(msg);
+    return true;
+  };
+
+  const upload = async (files) => {
+    const list = [...(files || [])].filter(f => /^image\//.test(f.type));
+    if (!list.length) return;
+    const room = MAX_PHOTOS - photos.length;
+    if (room <= 0) { setErr(`每堂課最多 ${MAX_PHOTOS} 張照片`); return; }
+    setBusy("photo"); setErr("");
+    let count = photos.length, failed = 0;
+    for (const f of list.slice(0, room)) {
+      try {
+        const p = await compressPhoto(f);
+        const res = await addSessionPhoto(s.id, { ...p, name: f.name }, count + 1);
+        if (res.success) count++; else failed++;
+      } catch { failed++; }
+    }
+    setBusy("");
+    if (failed) setErr(`有 ${failed} 張上傳失敗，請再試一次`);
+    if (list.length > room) setErr(`每堂課最多 ${MAX_PHOTOS} 張，多的照片沒有上傳`);
+    await onUpdated?.(`已上傳 ${count - photos.length} 張照片`);
+    fetchSessionPhotos(s.id).then(setPhotos);
+  };
+
+  const removePhoto = async (p) => {
+    if (armed !== p.id) { setArmed(p.id); setTimeout(() => setArmed(a => a === p.id ? "" : a), 3000); return; }
+    setArmed("");
+    await act("del" + p.id, () => deleteSessionPhoto(s.id, p.id, photos.length - 1), "照片已刪除");
+    fetchSessionPhotos(s.id).then(setPhotos);
+  };
+
+  const who = s.checkIn ? (s.checkIn.role === "student" ? "學員本人簽到" : `${s.checkIn.byName || "教練"} 代簽`) : "";
+  const dm = deliveredMinutes(s), sm = scheduledMinutes(s);
+  const canEditPhotos = staff && s.checkIn && !s.checkOut;
+
+  return (
+    <div className="attend">
+      <div className="attend-h">
+        <span>出席與上課證明</span>
+        {ATTEND[st] && <span className="attend-pill" style={{ background:ATTEND[st].bg, color:ATTEND[st].color }}>{ATTEND[st].label}</span>}
+      </div>
+
+      {/* 三個步驟 */}
+      <div className="steps">
+        <div className={"step" + (s.checkIn ? " ok" : "")}>
+          <div className="step-dot">{s.checkIn ? "✓" : "1"}</div>
+          <div className="step-body">
+            <div className="step-t">簽到</div>
+            <div className="step-s">{s.checkIn ? `${fmtClock(s.checkIn.at)} · ${who}` : st === "missed" ? "沒有簽到紀錄" : win === "open" ? (staff ? "已開放，等學員簽到" : "現在可以簽到") : `上課前 30 分鐘（${checkInOpensAt(s)}）開放簽到`}</div>
+          </div>
+        </div>
+        <div className={"step" + (photos.length ? " ok" : "")}>
+          <div className="step-dot">{photos.length ? "✓" : "2"}</div>
+          <div className="step-body">
+            <div className="step-t">上課證明</div>
+            <div className="step-s">{photos.length ? `${photos.length} 張照片／截圖` : "教練上傳現場照片或線上截圖"}</div>
+          </div>
+        </div>
+        <div className={"step" + (s.checkOut ? " ok" : "")}>
+          <div className="step-dot">{s.checkOut ? "✓" : "3"}</div>
+          <div className="step-body">
+            <div className="step-t">簽退</div>
+            <div className="step-s">
+              {s.checkOut
+                ? <>{fmtClock(s.checkOut.at)} · 實際上課 <b>{formatMinutes(dm)}</b>（排定 {formatMinutes(sm)}）{isShort(s) && <span style={{ color:"var(--rust)" }}> · 時數不足</span>}</>
+                : "課程結束後由教練簽退"}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {err && <div className="login-error" style={{ marginTop:10 }}>{err}</div>}
+
+      {/* 照片 */}
+      {(photos.length > 0 || canEditPhotos) && (
+        <div className="ph-grid">
+          {photos.map(p => (
+            <div key={p.id} className="ph">
+              <button className="ph-img" onClick={() => setView(p)} aria-label="放大照片"><img src={p.thumb || p.data} alt={p.name || "上課照片"} /></button>
+              {canEditPhotos && (
+                <button className={"ph-del" + (armed === p.id ? " armed" : "")} onClick={() => removePhoto(p)} aria-label="刪除照片">
+                  {armed === p.id ? "確定刪除" : "✕"}
+                </button>
+              )}
+            </div>
+          ))}
+          {canEditPhotos && photos.length < MAX_PHOTOS && (
+            <button className="ph ph-add" onClick={() => fileRef.current?.click()} disabled={busy === "photo"}>
+              <span style={{ fontSize:"calc(26px * var(--fs))" }}>{busy === "photo" ? "…" : "＋"}</span>
+              <span>{busy === "photo" ? "上傳中" : "拍照／上傳"}</span>
+            </button>
+          )}
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={e => { upload(e.target.files); e.target.value = ""; }} />
+
+      {s.checkOut?.summary && <div className="record-note" style={{ marginTop:10 }}><div className="record-note-label">課堂摘要</div>{s.checkOut.summary}</div>}
+
+      {/* ── 學員 ── */}
+      {viewer === "student" && win === "open" && (
+        <button className="btn btn-primary btn-lg" style={{ width:"100%", marginTop:12 }} disabled={!!busy}
+          onClick={() => act("in", () => checkInSession(s.id, "student"), "簽到成功 ✓")}>
+          {busy === "in" ? "簽到中…" : "✦ 我到了，簽到"}
+        </button>
+      )}
+      {viewer === "student" && st === "missed" && (
+        <div className="hint">這堂課沒有簽到紀錄。如果你有出席，請聯絡教練補登。</div>
+      )}
+
+      {/* ── 教練／管理員 ── */}
+      {staff && !s.checkIn && (st === "open" || st === "missed" || (st === "upcoming" && s.date === todayStr())) && (
+        <button className="btn" style={{ width:"100%", marginTop:12 }} disabled={!!busy}
+          onClick={() => act("in", () => checkInSession(s.id, viewer), "已代學員簽到")}>
+          {busy === "in" ? "處理中…" : "代學員簽到（學員沒有手機時使用）"}
+        </button>
+      )}
+      {staff && !s.checkIn && st !== "missed" && <div className="hint">學員可以在自己的 App 上簽到；代簽會標示為「教練代簽」並記錄實際時間。</div>}
+
+      {canEditPhotos && (
+        <>
+          <div className="input-label" style={{ marginTop:14 }}>課堂摘要（選填，學員看得到）</div>
+          <textarea className="input-field" rows={2} placeholder="例：完成定位一頁紙初稿，下次討論受眾輪廓" value={summary} onChange={e => setSummary(e.target.value)} />
+          <button className="btn btn-primary btn-lg" style={{ width:"100%" }} disabled={!!busy || photos.length === 0}
+            onClick={() => act("out", () => checkOutSession(s.id, summary.trim()), "已簽退，課程完成交付 ✓")}>
+            {busy === "out" ? "簽退中…" : "簽退，完成這堂課"}
+          </button>
+          {photos.length === 0 && <div className="hint">請先上傳至少 1 張上課照片或線上截圖，才能簽退。</div>}
+        </>
+      )}
+
+      {staff && s.checkOut && !s.recorded && onWriteRecord && (
+        <button className="btn btn-gold" style={{ width:"100%", marginTop:12 }} onClick={() => onWriteRecord(s)}>✦ 接著填寫上課記錄與回饋</button>
+      )}
+
+      {view && (
+        <div className="viewer" onClick={() => setView(null)}>
+          <img src={view.data} alt={view.name || "上課照片"} />
+          <div className="viewer-bar">
+            <span>{view.addedBy} · {fmtDateTime(view.createdAt)}</span>
+            <a href={view.data} download={(view.name || "photo").replace(/\.\w+$/, "") + ".jpg"} onClick={e => e.stopPropagation()}>下載</a>
+            <span>點任意處關閉</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 上課時數報表（學員看自己；教練看自己的學員；管理員看全聯盟）── */
+function HoursReport({ sessions, viewer, onOpen }) {
+  const months = monthOptions(sessions);
+  const [ym,    setYm]    = useState(months[0] || "");
+  const [by,    setBy]    = useState("student");
+  const [focus, setFocus] = useState("");
+  const { from, to } = monthRange(ym);
+  const inMonth = sessions.filter(s => inRange(s, from, to));
+  const rows = summarize(inMonth, by);
+  const tt = totals(rows);
+  const keyOf = by === "coach" ? (s) => s.coachId : (s) => s.studentUid;
+  const detail = deliveredList(inMonth).filter(s => !focus || keyOf(s) === focus);
+  const pendingN = tt.missed + tt.needOut;
+
+  const download = () => {
+    const blob = new Blob([sessionsCsv(inMonth)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `iSTAR上課時數_${ym || "全部"}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  return (
+    <>
+      <div className="filter-row">
+        {months.map(m => (
+          <button key={m} className={"filter-chip" + (ym === m ? " on" : "")} style={{ color: ym === m ? "var(--gold)" : "var(--ink-2)" }}
+            onClick={() => { setYm(m); setFocus(""); }}>{Number(m.slice(5))} 月{m.slice(0, 4) !== todayStr().slice(0, 4) ? ` ${m.slice(0, 4)}` : ""}</button>
+        ))}
+        <button className={"filter-chip" + (!ym ? " on" : "")} style={{ color: !ym ? "var(--gold)" : "var(--ink-2)" }} onClick={() => { setYm(""); setFocus(""); }}>全部</button>
+      </div>
+
+      <div className="stats-grid">
+        <div className="stat-tile"><div className="stat-num gold">{toHours(tt.deliveredMin)}</div><div className="stat-lbl">實際上課時數</div></div>
+        <div className="stat-tile"><div className="stat-num">{tt.done}<span className="stat-of">／{tt.total}</span></div><div className="stat-lbl">完成交付堂數</div></div>
+        <div className="stat-tile"><div className="stat-num" style={{ color:"var(--sage)" }}>{tt.total ? Math.round(tt.done / tt.total * 100) : 0}%</div><div className="stat-lbl">完整交付率</div></div>
+        <div className="stat-tile"><div className="stat-num" style={{ color: pendingN ? "var(--rust)" : "var(--ink-3)" }}>{pendingN}</div><div className="stat-lbl">待補登堂數</div></div>
+      </div>
+
+      {viewer !== "student" && (
+        <>
+          {viewer === "admin" && (
+            <div className="seg">
+              <button className={by === "student" ? "on" : ""} onClick={() => { setBy("student"); setFocus(""); }}>依學員</button>
+              <button className={by === "coach" ? "on" : ""} onClick={() => { setBy("coach"); setFocus(""); }}>依教練</button>
+            </div>
+          )}
+          {rows.length > 0 && (
+            <div className="card" style={{ padding:"4px 14px" }}>
+              {rows.map(r => (
+                <button key={r.key} className={"hr-row" + (focus === r.key ? " on" : "")} onClick={() => setFocus(f => f === r.key ? "" : r.key)}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div className="hr-name">{r.name}</div>
+                    <div className="hr-sub">完成 {r.done}／{r.total} 堂{r.missed ? ` · 未簽到 ${r.missed}` : ""}{r.needOut ? ` · 待簽退 ${r.needOut}` : ""}</div>
+                    <div className="prog-track" style={{ marginTop:6 }}><div className="prog-fill" style={{ width:`${r.rate}%`, background: r.rate === 100 ? "var(--sage)" : "var(--gold)" }} /></div>
+                  </div>
+                  <div className="hr-h">{toHours(r.deliveredMin)}<span>小時</span></div>
+                </button>
+              ))}
+            </div>
+          )}
+          <button className="btn" style={{ width:"100%", marginBottom:6 }} onClick={download} disabled={!detail.length && !rows.length}>⬇ 匯出 CSV（可用 Excel 開啟）</button>
+        </>
+      )}
+
+      <div className="sec-h">{focus ? `${rows.find(r => r.key === focus)?.name || ""} 的上課明細` : "上課明細"}{focus && <button className="link-btn" onClick={() => setFocus("")}>顯示全部</button>}</div>
+      {detail.length === 0
+        ? <div className="card empty">這段期間還沒有上過的課</div>
+        : detail.map(s => (
+          <button key={s.id} className="sess" onClick={() => onOpen(s)} style={{ borderLeft:`3px solid ${ATTEND[attendanceState(s)]?.color || "var(--cream-4)"}` }}>
+            <div className="sess-time">
+              <div className="sess-date">{formatDateLabel(s.date)}</div>
+              <div className="sess-start">{s.start}</div>
+            </div>
+            <div className="sess-body">
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                <div className="sess-title">{s.moduleTitle || "一對一課程"}</div>
+                <AttendBadge s={s} />
+              </div>
+              <div className="sess-meta">{viewer === "student" ? `教練 ${s.coachName || "—"}` : viewer === "coach" ? `學員 ${s.studentName || "—"}` : `${s.studentName || "—"} · 教練 ${s.coachName || "—"}`}</div>
+              <div className="sess-meta">
+                {s.checkIn ? `簽到 ${fmtClock(s.checkIn.at)}` : "未簽到"}{s.checkOut ? ` · 簽退 ${fmtClock(s.checkOut.at)}` : ""}{s.photoCount ? ` · 📷 ${s.photoCount}` : ""}
+              </div>
+            </div>
+          </button>
+        ))}
+    </>
+  );
+}
+
 /* ── 課程時段詳情（依角色顯示不同操作）── */
-function SessionSheet({ s, viewer, onClose, onChanged, onEdit, onWriteRecord }) {
-  const { confirmSession, requestReschedule, bookOpenSession, deleteSession } = useAuth();
+function SessionSheet({ s: initial, viewer, onClose, onChanged, onEdit, onWriteRecord }) {
+  const { confirmSession, requestReschedule, bookOpenSession, deleteSession, fetchSession } = useAuth();
+  // 簽到、上傳照片、簽退後留在這個畫面並顯示最新資料
+  const [s, setS] = useState(initial);
+  const reload = async (msg) => {
+    const fresh = await fetchSession(s.id);
+    if (fresh) setS(fresh);
+    onChanged?.(msg, { keepOpen: true });
+  };
   const [agree,     setAgree]     = useState(false);
   const [askChange, setAskChange] = useState(false);
   const [note,      setNote]      = useState("");
@@ -1666,7 +2153,7 @@ function SessionSheet({ s, viewer, onClose, onChanged, onEdit, onWriteRecord }) 
         <div className="modal-handle" />
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, marginBottom:14 }}>
           <div>
-            <div style={{ fontSize:12, color:"var(--gold)", fontWeight:700, letterSpacing:".06em" }}>
+            <div style={{ fontSize:fz(14), color:"var(--gold)", fontWeight:700, letterSpacing:".02em" }}>
               {relativeDayLabel(s.date)} · {formatDateLabel(s.date)}
             </div>
             <div className="modal-title" style={{ marginBottom:0, marginTop:4 }}>{s.moduleTitle || "一對一課程"}</div>
@@ -1692,11 +2179,11 @@ function SessionSheet({ s, viewer, onClose, onChanged, onEdit, onWriteRecord }) 
         {/* 學員提出的改期原因（教練與學員都看得到） */}
         {s.status === "reschedule" && (
           <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)" }}>
-            <div style={{ fontSize:12, fontWeight:700, color:"var(--rust)", letterSpacing:".06em" }}>學員請求改期</div>
-            <div style={{ fontSize:14, color:"var(--ink-2)", marginTop:4, fontStyle:"italic", lineHeight:1.6 }}>
+            <div style={{ fontSize:fz(14), fontWeight:700, color:"var(--rust)", letterSpacing:".02em" }}>學員請求改期</div>
+            <div style={{ fontSize:fz(16), color:"var(--ink-2)", marginTop:4, lineHeight:1.6 }}>
               {s.studentNote || "（未填寫原因）"}
             </div>
-            {viewer === "student" && <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:6 }}>已通知教練，等待重新安排時間。</div>}
+            {viewer === "student" && <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:6 }}>已通知教練，等待重新安排時間。</div>}
           </div>
         )}
 
@@ -1740,19 +2227,27 @@ function SessionSheet({ s, viewer, onClose, onChanged, onEdit, onWriteRecord }) 
           </div>
         )}
 
+        {/* ── 出席與上課證明（已排定的課）── */}
+        {s.status === "confirmed" && s.studentUid && (
+          <AttendancePanel s={s} viewer={viewer} onUpdated={reload} onWriteRecord={onWriteRecord} />
+        )}
+
         {/* ── 教練操作 ── */}
         {viewer === "coach" && !confirmDel && (
           <>
-            {past && s.studentUid && s.status === "confirmed" && !s.recorded && (
-              <button className="btn btn-primary" style={{ width:"100%", padding:12, marginBottom:8 }} onClick={() => onWriteRecord(s)}>
-                ✦ 填寫這堂課的上課記錄
+            {past && s.studentUid && s.status === "confirmed" && !s.recorded && !s.checkOut && onWriteRecord && (
+              <button className="btn" style={{ width:"100%", marginTop:10 }} onClick={() => onWriteRecord(s)}>
+                填寫這堂課的上課記錄
               </button>
             )}
-            <div className="btn-row" style={{ marginTop:0 }}>
-              <button className="btn" onClick={() => onEdit(s)}>{s.status === "reschedule" ? "重新安排時間" : "編輯時段"}</button>
-              <button className="btn" style={{ color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }}
-                onClick={() => setConfirmDel(true)}>{past ? "刪除" : "取消課程"}</button>
+            <div className="btn-row">
+              {!s.checkIn && onEdit && <button className="btn" onClick={() => onEdit(s)}>{s.status === "reschedule" ? "重新安排時間" : "編輯時段"}</button>}
+              {!s.checkIn && (
+                <button className="btn" style={{ color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)" }}
+                  onClick={() => setConfirmDel(true)}>{past ? "刪除" : "取消課程"}</button>
+              )}
             </div>
+            {s.checkIn && <div className="hint" style={{ textAlign:"center" }}>已簽到的課程是交付紀錄，無法修改或刪除；如需更正請聯絡管理員。</div>}
           </>
         )}
         {(viewer === "admin" && !confirmDel) && (
@@ -1761,7 +2256,7 @@ function SessionSheet({ s, viewer, onClose, onChanged, onEdit, onWriteRecord }) 
         )}
         {confirmDel && (
           <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)", marginBottom:0 }}>
-            <div style={{ fontSize:14, color:"var(--ink-2)", marginBottom:10 }}>確定要{past ? "刪除" : "取消"}這個時段嗎？學員端也會一併移除。</div>
+            <div style={{ fontSize:fz(16), color:"var(--ink-2)", marginBottom:10 }}>確定要{past ? "刪除" : "取消"}這個時段嗎？學員端也會一併移除。</div>
             <div className="btn-row" style={{ marginTop:0 }}>
               <button className="btn" onClick={() => setConfirmDel(false)}>返回</button>
               <button className="btn" style={{ background:"var(--rust)", color:"#fff", borderColor:"var(--rust)" }} disabled={busy}
@@ -1877,7 +2372,7 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
           <button className={form.mode === "assign" ? "on" : ""} onClick={() => set("mode", "assign")}>指定學員</button>
           <button className={form.mode === "open" ? "on" : ""} onClick={() => set("mode", "open")}>開放預約時段</button>
         </div>
-        <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:-6, marginBottom:14, fontStyle:"italic", lineHeight:1.6 }}>
+        <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:-6, marginBottom:14, lineHeight:1.6 }}>
           {form.mode === "assign"
             ? "排給指定學員，狀態為「待確認」，學員確認後變成「已排定」。"
             : "開放給學員自行預約，狀態為「可預約」，學員預約後直接「已排定」。"}
@@ -1889,7 +2384,7 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
           <>
             <div className="input-label">學員 *</div>
             {students.length === 0
-              ? <div style={{ fontSize:13, color:"var(--ink-3)", marginBottom:12, fontStyle:"italic" }}>尚無學員，請管理員先新增學員。</div>
+              ? <div style={{ fontSize:fz(15), color:"var(--ink-3)", marginBottom:12 }}>尚無學員，請管理員先新增學員。</div>
               : <div className="chip-group">
                   {students.map(st => (
                     <div key={st.uid} className={"chip" + (form.studentUid === st.uid ? " sel" : "")} onClick={() => set("studentUid", st.uid)}>{st.name}</div>
@@ -1905,8 +2400,8 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
             <option key={m.id} value={m.id}>{assignedIds.includes(m.id) ? "★ " : ""}{m.title}</option>
           ))}
         </select>
-        {myModules.length === 0 && <div style={{ fontSize:12, color:"var(--ink-4)", marginTop:-6, marginBottom:10, fontStyle:"italic" }}>你還沒有課程模組，可先到「模組」新增。</div>}
-        {assignedIds.length > 0 && <div style={{ fontSize:12, color:"var(--ink-4)", marginTop:-6, marginBottom:10, fontStyle:"italic" }}>★ 為已分配給此學員的模組</div>}
+        {myModules.length === 0 && <div style={{ fontSize:fz(14), color:"var(--ink-4)", marginTop:-6, marginBottom:10 }}>你還沒有課程模組，可先到「模組」新增。</div>}
+        {assignedIds.length > 0 && <div style={{ fontSize:fz(14), color:"var(--ink-4)", marginTop:-6, marginBottom:10 }}>★ 為已分配給此學員的模組</div>}
 
         <div className="input-label">日期 *</div>
         <input className="input-field" type="date" min={todayStr()} value={form.date} onChange={e => set("date", e.target.value)} />
@@ -1933,7 +2428,7 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
               ))}
             </div>
             {form.repeat > 1 && (
-              <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:-4, marginBottom:12, fontStyle:"italic" }}>
+              <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:-4, marginBottom:12 }}>
                 將建立 {form.repeat} 堂：每週{weekdayLabel(form.date)} {form.start}，從 {formatDateLabel(form.date)} 到 {formatDateLabel(dates[dates.length - 1])}
               </div>
             )}
@@ -1952,13 +2447,13 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
 
         {conflicts.length > 0 && (
           <div className="alert-card" style={{ background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)" }}>
-            <div style={{ fontSize:13, fontWeight:700, color:"#8A6820" }}>⚠ 有 {conflicts.length} 個時段衝堂</div>
+            <div style={{ fontSize:fz(15), fontWeight:700, color:"#8A6820" }}>⚠ 有 {conflicts.length} 個時段衝堂</div>
             {conflicts.slice(0, 3).map(c => (
-              <div key={c.id + c.date} style={{ fontSize:12, color:"var(--ink-2)", marginTop:4 }}>
+              <div key={c.id + c.date} style={{ fontSize:fz(14), color:"var(--ink-2)", marginTop:4 }}>
                 {formatDateLabel(c.date)} {c.start}–{c.end} · {c.moduleTitle || "一對一課程"} · {c.coachId === profile?.uid ? (c.studentName || "開放時段") : `${c.coachName} 教練的課`}
               </div>
             ))}
-            {ackConflict && <div style={{ fontSize:12, color:"#8A6820", marginTop:6, fontStyle:"italic" }}>再按一次「仍要排課」即可建立。</div>}
+            {ackConflict && <div style={{ fontSize:fz(14), color:"#8A6820", marginTop:6 }}>再按一次「仍要排課」即可建立。</div>}
           </div>
         )}
 
@@ -2004,9 +2499,52 @@ const S_TABS = [
   { key:"feedback", label:"反饋", Icon:IcMsg  },
 ];
 
+/* 學員首頁最上方：今天的課 → 一鍵簽到 */
+function TodayClassCard({ s, onOpen, onCheckedIn }) {
+  const { checkInSession } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState("");
+  const [now,  setNow]  = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
+  const st = attendanceState(s, now);
+  const go = async () => {
+    setBusy(true); setErr("");
+    const r = await checkInSession(s.id, "student");
+    setBusy(false);
+    if (r.success) onCheckedIn?.(); else setErr("簽到失敗，請再試一次。");
+  };
+  const isLink = /^https?:\/\//i.test(s.location || "");
+  return (
+    <div className={"today-card st-" + st}>
+      <button className="today-main" onClick={() => onOpen(s)}>
+        <div className="today-k">{s.date === todayStr() ? "今天的課" : relativeDayLabel(s.date)} · {s.start}–{s.end}</div>
+        <div className="today-t">{s.moduleTitle || "一對一課程"}</div>
+        <div className="today-m">教練 {s.coachName || "—"} · {s.method || "線上"}{s.location && !isLink ? ` · ${s.location}` : ""}</div>
+      </button>
+      {err && <div className="login-error" style={{ margin:"10px 0 0" }}>{err}</div>}
+      {st === "open" && (
+        <button className="btn btn-primary btn-lg" style={{ width:"100%", marginTop:12 }} disabled={busy} onClick={go}>
+          {busy ? "簽到中…" : "✦ 我到了，簽到"}
+        </button>
+      )}
+      {st === "upcoming" && <div className="today-note">⏰ {checkInOpensAt(s)} 開放簽到（上課前 30 分鐘）</div>}
+      {st === "inClass"  && <div className="today-note ok">✓ 已於 {fmtClock(s.checkIn.at)} 簽到，上課中</div>}
+      {st === "needOut"  && <div className="today-note ok">✓ 已簽到，等教練簽退完成這堂課</div>}
+      {st === "done"     && <div className="today-note ok">✓ 已完成，本堂上課 {formatMinutes(deliveredMinutes(s))}</div>}
+      {isLink && (st === "open" || st === "inClass" || st === "upcoming") && (
+        <a className="btn" href={s.location} target="_blank" rel="noopener noreferrer" style={{ width:"100%", marginTop:8, textDecoration:"none" }}>進入線上教室 ↗</a>
+      )}
+    </div>
+  );
+}
+
 function SHome({ onSwitch }) {
   const { profile, fetchRecords, fetchAssignment, fetchModules, fetchSessions, fetchJourney } = useAuth();
   const [journey, setJourney] = useState(null);
+  const [todayList, setTodayList] = useState([]);
+  const [sheet,     setSheet]     = useState(null);
+  const [toast,     setToast]     = useState("");
+  const [refresh,   setRefresh]   = useState(0);
   const name       = profile?.name || "同學";
   const [pendingCount, setPendingCount] = useState(0);
   const [nextSession,  setNextSession]  = useState(null);
@@ -2029,7 +2567,10 @@ function SHome({ onSwitch }) {
     fetchSessions({ studentUid: profile.uid }).then(list => {
       const future = sortSessions(list.filter(s => !isPast(s)));
       setPendingCount(future.filter(s => s.status === "pending").length);
-      setNextSession(future.find(s => s.status === "confirmed") || null);
+      // 今天已排定的課（含剛下課、還在補簽到時間內的）放最上面
+      const today = sortSessions(list.filter(s => s.status === "confirmed" && s.date === todayStr()));
+      setTodayList(today);
+      setNextSession(future.find(s => s.status === "confirmed" && s.date !== todayStr()) || null);
     }).catch(() => {});
     fetchSessions({ status: "open" }).then(list => setOpenCount(list.filter(s => !isPast(s)).length)).catch(() => {});
     // 成長路徑
@@ -2041,7 +2582,7 @@ function SHome({ onSwitch }) {
       const assigned = mods.filter(m => ids.includes(m.id));
       if (assigned.length) setNextModule(assigned[0]);
     }).catch(() => {});
-  }, [profile?.uid]);
+  }, [profile?.uid, refresh]);
 
   // 計算問候語
   const hour = new Date().getHours();
@@ -2054,31 +2595,30 @@ function SHome({ onSwitch }) {
 
   return (
     <div className="screen-enter">
-      <div className="topbar">
-        <div>
-          <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR</div>
-          <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, letterSpacing:".04em" }}>星辰聯盟</div>
-        </div>
-        <div className="avatar" style={(() => { const c = getAvatarColor(name); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>{name.slice(0,1)}</div>
-      </div>
       <div className="content">
+
+        {/* ── 今天的課：簽到是上課當下唯一要做的事，放最上面 ── */}
+        {todayList.filter(s => attendanceState(s) !== "missed").map(s => (
+          <TodayClassCard key={s.id} s={s} onOpen={setSheet}
+            onCheckedIn={() => { setToast("簽到成功 ✓"); setRefresh(r => r + 1); }} />
+        ))}
 
         {/* ── 問候卡（升級版：顯示當前成長階段）── */}
         <div className="card-gold" style={{ marginBottom:12 }}>
-          <div className="greeting-name">{greeting}，{name} <span style={{ fontSize:18 }}>✦</span></div>
+          <div className="greeting-name">{greeting}，{name} <span style={{ fontSize:fz(20) }}>✦</span></div>
           <div className="greeting-sub" style={{ marginTop:5 }}>
             {courseType ? courseType : "你的旅程正在前進"}
           </div>
           {currentStage && (
             <button onClick={() => onSwitch("growth")} style={{ display:"block", width:"100%", textAlign:"left", marginTop:14, border:"none", background:"none", padding:0, cursor:"pointer", fontFamily:"var(--font)", color:"inherit" }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:7 }}>
-                <span style={{ fontSize:10, letterSpacing:".1em", textTransform:"uppercase", color:"var(--gold)", fontWeight:700 }}>
+                <span style={{ fontSize:fz(12), letterSpacing:".02em", textTransform:"uppercase", color:"var(--gold)", fontWeight:700 }}>
                   第 {j.currentStage} / 9 階段 · {currentStage.name}
                 </span>
-                <span style={{ fontSize:12, color:"var(--gold)", fontWeight:600 }}>整體 {overallProgress(j)}%</span>
+                <span style={{ fontSize:fz(14), color:"var(--gold)", fontWeight:600 }}>整體 {overallProgress(j)}%</span>
               </div>
               <StageBar journey={j} />
-              <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:11, color:"var(--ink-3)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:fz(13), color:"var(--ink-3)" }}>
                 <span>本階段 {stageProg.done}/{stageProg.total} 個里程碑{stageProg.claimed ? `（${stageProg.claimed} 個待確認）` : ""}</span>
                 <span style={{ color:"var(--gold)" }}>查看路徑 →</span>
               </div>
@@ -2092,10 +2632,10 @@ function SHome({ onSwitch }) {
             style={{ width:"100%", textAlign:"left", cursor:"pointer", background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)", fontFamily:"var(--font)" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
               <div>
-                <div style={{ fontSize:15, fontWeight:700, color:"#8A6820" }}>你有 {pendingCount} 堂課等待確認時間</div>
-                <div style={{ fontSize:12, color:"#A07830", marginTop:3, fontStyle:"italic" }}>點此前往課表確認</div>
+                <div style={{ fontSize:fz(17), fontWeight:700, color:"#8A6820" }}>你有 {pendingCount} 堂課等待確認時間</div>
+                <div style={{ fontSize:fz(14), color:"#A07830", marginTop:3 }}>點此前往課表確認</div>
               </div>
-              <span style={{ fontSize:18, color:"#8A6820" }}>→</span>
+              <span style={{ fontSize:fz(20), color:"#8A6820" }}>→</span>
             </div>
           </button>
         )}
@@ -2106,7 +2646,7 @@ function SHome({ onSwitch }) {
             <div className="sec-h">下一堂課</div>
             <button className="sess" style={{ borderLeft:`3px solid ${getCoachModuleColor(nextSession.coachId||"").border}` }} onClick={() => onSwitch("courses")}>
               <div className="sess-time">
-                <div style={{ fontSize:11, color:"var(--gold)", fontWeight:700, marginBottom:3 }}>{relativeDayLabel(nextSession.date)}</div>
+                <div style={{ fontSize:fz(13), color:"var(--gold)", fontWeight:700, marginBottom:3 }}>{relativeDayLabel(nextSession.date)}</div>
                 <div className="sess-start">{nextSession.start}</div>
                 <div className="sess-end">{nextSession.end}</div>
               </div>
@@ -2122,8 +2662,8 @@ function SHome({ onSwitch }) {
           <button className="card" onClick={() => onSwitch("courses")}
             style={{ width:"100%", textAlign:"left", cursor:"pointer", fontFamily:"var(--font)", display:"flex", alignItems:"center", justifyContent:"space-between", borderLeft:"3px solid var(--slate)" }}>
             <div>
-              <div style={{ fontSize:14, fontWeight:600 }}>有 {openCount} 個時段開放預約</div>
-              <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:3, fontStyle:"italic" }}>前往課表選擇你方便的時間</div>
+              <div style={{ fontSize:fz(16), fontWeight:600 }}>有 {openCount} 個時段開放預約</div>
+              <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:3 }}>前往課表選擇你方便的時間</div>
             </div>
             <span style={{ color:"var(--slate)" }}>→</span>
           </button>
@@ -2134,11 +2674,11 @@ function SHome({ onSwitch }) {
           <>
             <div className="sec-h">學習中的課程模組</div>
             <div className="card" style={{ borderLeft:"2px solid var(--gold)", cursor:"pointer" }} onClick={() => onSwitch("courses")}>
-              <div style={{ fontSize:10, letterSpacing:".1em", textTransform:"uppercase", color:"var(--gold)", marginBottom:5, fontWeight:700 }}>待完成</div>
-              <div style={{ fontSize:15, fontWeight:600, fontFamily:"var(--font)", marginBottom:3 }}>{nextModule.title}</div>
+              <div style={{ fontSize:fz(12), letterSpacing:".02em", textTransform:"uppercase", color:"var(--gold)", marginBottom:5, fontWeight:700 }}>待完成</div>
+              <div style={{ fontSize:fz(17), fontWeight:600, fontFamily:"var(--font)", marginBottom:3 }}>{nextModule.title}</div>
               <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                {(nextModule.stage||[]).map(s => <span key={s} className="badge badge-gold" style={{ fontSize:10 }}>{s}</span>)}
-                {nextModule.duration && <span style={{ fontSize:11, color:"var(--ink-3)", fontStyle:"italic" }}>⏱ {nextModule.duration}</span>}
+                {(nextModule.stage||[]).map(s => <span key={s} className="badge badge-gold" style={{ fontSize:fz(12) }}>{s}</span>)}
+                {nextModule.duration && <span style={{ fontSize:fz(13), color:"var(--ink-3)" }}>⏱ {nextModule.duration}</span>}
               </div>
             </div>
           </>
@@ -2147,8 +2687,8 @@ function SHome({ onSwitch }) {
             <div className="sec-h">我的課程</div>
             <div className="card" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }} onClick={() => onSwitch("courses")}>
               <div>
-                <div style={{ fontSize:15, fontWeight:600, fontFamily:"var(--font)" }}>{courseType}</div>
-                {coachName && <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:3, fontStyle:"italic" }}>聯絡教練：{coachName}</div>}
+                <div style={{ fontSize:fz(17), fontWeight:600, fontFamily:"var(--font)" }}>{courseType}</div>
+                {coachName && <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:3 }}>聯絡教練：{coachName}</div>}
               </div>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-4)" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
@@ -2156,8 +2696,8 @@ function SHome({ onSwitch }) {
         ) : (
           <>
             <div className="sec-h">課程</div>
-            <div className="card" style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, padding:"20px 16px", lineHeight:1.7 }}>
-              尚未分配課程<br /><span style={{ fontSize:12, fontStyle:"italic" }}>請聯絡您的教練</span>
+            <div className="card" style={{ textAlign:"center", color:"var(--ink-3)", fontSize:fz(15), padding:"20px 16px", lineHeight:1.7 }}>
+              尚未分配課程<br /><span style={{ fontSize:fz(14) }}>請聯絡您的教練</span>
             </div>
           </>
         )}
@@ -2168,12 +2708,12 @@ function SHome({ onSwitch }) {
             <div className="sec-h">最新回饋</div>
             <div className="card" style={{ cursor:"pointer" }} onClick={() => onSwitch("feedback")}>
               <div className="feedback-author">✦ {latestFeedback.coachName} · {latestFeedback.date}</div>
-              <div className="feedback-quote" style={{ fontSize:13, marginBottom:0 }}>
+              <div className="feedback-quote" style={{ fontSize:fz(15), marginBottom:0 }}>
                 {latestFeedback.feedback.length > 80
                   ? latestFeedback.feedback.slice(0,80) + "…"
                   : latestFeedback.feedback}
               </div>
-              <div style={{ fontSize:11, color:"var(--ink-4)", marginTop:8, fontStyle:"italic" }}>
+              <div style={{ fontSize:fz(13), color:"var(--ink-4)", marginTop:8 }}>
                 點此查看完整回饋 →
               </div>
             </div>
@@ -2185,10 +2725,10 @@ function SHome({ onSwitch }) {
           <>
             <div className="sec-h">本週學習</div>
             <div className="card" style={{ display:"flex", alignItems:"center", gap:14, cursor:"pointer", padding:"14px 18px" }} onClick={() => onSwitch("feedback")}>
-              <div style={{ fontSize:24 }}>💬</div>
+              <div style={{ fontSize:fz(26) }}>💬</div>
               <div>
-                <div style={{ fontSize:14, fontWeight:600, fontFamily:"var(--font)" }}>填寫本週反饋</div>
-                <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:3, fontStyle:"italic" }}>記錄你的學習收穫與感受</div>
+                <div style={{ fontSize:fz(16), fontWeight:600, fontFamily:"var(--font)" }}>填寫本週反饋</div>
+                <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:3 }}>記錄你的學習收穫與感受</div>
               </div>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-4)" strokeWidth="2" style={{ marginLeft:"auto" }}><polyline points="9 18 15 12 9 6"/></svg>
             </div>
@@ -2196,6 +2736,11 @@ function SHome({ onSwitch }) {
         )}
 
       </div>
+      {sheet && (
+        <SessionSheet s={sheet} viewer="student" onClose={() => { setSheet(null); setRefresh(r => r + 1); }}
+          onChanged={(msg) => { if (msg) setToast(msg); }} />
+      )}
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={S_TABS} active="home" onSwitch={onSwitch} />
     </div>
   );
@@ -2248,7 +2793,8 @@ function SCourses({ onSwitch }) {
         <button className={"inner-tab"+(tab==="schedule"?" active":"")} onClick={()=>setTab("schedule")}>
           課表{pending.length > 0 && <span style={{ marginLeft:5, color:"var(--rust)" }}>({pending.length})</span>}
         </button>
-        <button className={"inner-tab"+(tab==="modules"?" active":"")} onClick={()=>setTab("modules")}>我的課程模組</button>
+        <button className={"inner-tab"+(tab==="modules"?" active":"")} onClick={()=>setTab("modules")}>課程模組</button>
+        <button className={"inner-tab"+(tab==="hours"?" active":"")} onClick={()=>setTab("hours")}>上課時數</button>
       </div>
 
       <div className="content" style={{ paddingTop:12 }}>
@@ -2257,8 +2803,8 @@ function SCourses({ onSwitch }) {
             {/* 1. 待確認：最需要學員行動的事放最上面 */}
             {pending.length > 0 && (
               <div className="alert-card" style={{ background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)" }}>
-                <div style={{ fontSize:14, fontWeight:700, color:"#8A6820" }}>教練幫你排了 {pending.length} 堂課，請確認時間</div>
-                <div style={{ fontSize:12, color:"#A07830", marginTop:3, marginBottom:10, fontStyle:"italic" }}>點選課程，勾選「確認課程時間」即完成</div>
+                <div style={{ fontSize:fz(16), fontWeight:700, color:"#8A6820" }}>教練幫你排了 {pending.length} 堂課，請確認時間</div>
+                <div style={{ fontSize:fz(14), color:"#A07830", marginTop:3, marginBottom:10 }}>點選課程，勾選「確認課程時間」即完成</div>
                 {pending.map(s => <SessionItem key={s.id} s={s} viewer="student" onOpen={setSheet} showDate />)}
               </div>
             )}
@@ -2268,7 +2814,7 @@ function SCourses({ onSwitch }) {
               <>
                 <div className="sec-h">開放預約時段 · {openSlots.length}</div>
                 {sortSessions(openSlots).slice(0, 4).map(s => <SessionItem key={s.id} s={s} viewer="student" onOpen={setSheet} showDate />)}
-                {openSlots.length > 4 && <div style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic", margin:"-2px 0 8px" }}>更多時段可在下方月曆中查看（藍色點）</div>}
+                {openSlots.length > 4 && <div style={{ fontSize:fz(14), color:"var(--ink-3)", margin:"-2px 0 8px" }}>更多時段可在下方月曆中查看（藍色點）</div>}
               </>
             )}
 
@@ -2280,9 +2826,11 @@ function SCourses({ onSwitch }) {
           </>
         ))}
 
+        {tab === "hours" && <HoursReport sessions={mine} viewer="student" onOpen={setSheet} />}
+
         {tab === "modules" && (
           modules.length === 0
-            ? <div className="empty" style={{ marginTop:24 }}>尚未分配課程模組<br/><span style={{ fontSize:12, fontStyle:"italic" }}>教練分配後會出現在這裡</span></div>
+            ? <div className="empty" style={{ marginTop:24 }}>尚未分配課程模組<br/><span style={{ fontSize:fz(14) }}>教練分配後會出現在這裡</span></div>
             : modules.map(m => <StudentModuleCard key={m.id} m={m} />)
         )}
       </div>
@@ -2305,15 +2853,15 @@ function StudentModuleCard({ m }) {
       <div style={{ padding:"12px 14px", cursor:"pointer" }} onClick={() => setOpen(o => !o)}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:11, color:color.border, fontWeight:700, marginBottom:4 }}>{m.coachName || "—"} 教練</div>
+            <div style={{ fontSize:fz(13), color:color.border, fontWeight:700, marginBottom:4 }}>{m.coachName || "—"} 教練</div>
             <div className="mod-title">{m.title}</div>
             {m.outline && <div className="mod-outline" style={{ marginTop:4 }}>{m.outline}</div>}
             <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:8 }}>
-              {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background:"rgba(255,255,255,.7)", color:color.border, border:`1px solid ${color.border}`, fontSize:10 }}>{s}</span>)}
-              {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>}
+              {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background:"rgba(255,255,255,.7)", color:color.border, border:`1px solid ${color.border}`, fontSize:fz(12) }}>{s}</span>)}
+              {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(12) }}>⏱ {m.duration}</span>}
             </div>
           </div>
-          <span style={{ fontSize:12, color:"var(--ink-4)", whiteSpace:"nowrap" }}>{open ? "收合 ▲" : "學習資料 ▼"}</span>
+          <span style={{ fontSize:fz(14), color:"var(--ink-4)", whiteSpace:"nowrap" }}>{open ? "收合 ▲" : "學習資料 ▼"}</span>
         </div>
       </div>
       {open && <div style={{ padding:"0 14px 14px" }}><ResourceManager moduleId={m.id} canManage={false} /></div>}
@@ -2431,8 +2979,8 @@ function SFeedback({ onSwitch }) {
             <div className="sec-h">我送出的反饋</div>
             {mine.map(f => (
               <div key={f.id} className="card card-sm">
-                <div style={{ fontSize:11, color:"var(--ink-4)", marginBottom:4 }}>{f.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || "剛剛"}</div>
-                <div style={{ fontSize:14, color:"var(--ink-2)", lineHeight:1.65, whiteSpace:"pre-wrap" }}>{f.text}</div>
+                <div style={{ fontSize:fz(13), color:"var(--ink-4)", marginBottom:4 }}>{f.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || "剛剛"}</div>
+                <div style={{ fontSize:fz(16), color:"var(--ink-2)", lineHeight:1.65, whiteSpace:"pre-wrap" }}>{f.text}</div>
               </div>
             ))}
           </>
@@ -2449,8 +2997,12 @@ function SFeedback({ onSwitch }) {
    COACH SCREENS
 ════════════════════════════════════════ */
 
-function CHome({ onSwitch }) {
-  const { profile, fetchMembers, fetchModules, fetchRecords, fetchAssignment, fetchSessions, fetchFeedbacks, ensureJourneys } = useAuth();
+function CHome({ onSwitch, onModal }) {
+  const { profile, fetchMembers, fetchModules, fetchRecords, fetchAssignment, fetchSessions, fetchFeedbacks, ensureJourneys, updateSession } = useAuth();
+  const [mySessions, setMySessions] = useState([]);
+  const [sheet,      setSheet]      = useState(null);
+  const [toast,      setToast]      = useState("");
+  const [sRefresh,   setSRefresh]   = useState(0);
   const [journeys,  setJourneys]  = useState([]);
   const [jStudent,  setJStudent]  = useState(null);
   const [jRefresh,  setJRefresh]  = useState(0);
@@ -2471,12 +3023,25 @@ function CHome({ onSwitch }) {
   useEffect(() => {
     if (!profile?.uid) return;
     fetchSessions({ coachId: profile.uid }).then(list => {
+      setMySessions(list);
       const future = sortSessions(list.filter(s => !isPast(s)));
-      setUpcoming(future);
+      setUpcoming(future.filter(s => s.date !== todayStr()));
       setSchedCnt(countByStatus(future));
     }).catch(() => {});
     fetchFeedbacks().then(list => setFeedbacks(list.slice(0, 3))).catch(() => {});
-  }, [profile?.uid]);
+  }, [profile?.uid, sRefresh]);
+
+  // 今天的課、待補簽退／簽到（最近 14 天）
+  const todayClasses = sortSessions(mySessions.filter(s => s.date === todayStr() && s.status === "confirmed" && s.studentUid));
+  const recentFrom = addDays(todayStr(), -14);
+  const toFix = sortSessions(mySessions.filter(s => s.date >= recentFrom && s.date < todayStr()
+    && ["needOut", "missed"].includes(attendanceState(s)))).reverse();
+  const writeRecord = (s) => {
+    setSheet(null);
+    onModal?.("record", () => { updateSession(s.id, { recorded: true }).then(() => { setToast("上課記錄已儲存 ✓"); setSRefresh(r => r + 1); }); }, {
+      prefill: { studentUid: s.studentUid, studentName: s.studentName, date: s.date, topic: s.moduleTitle || "一對一課程", sessionId: s.id },
+    });
+  };
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -2512,34 +3077,39 @@ function CHome({ onSwitch }) {
 
   return (
     <div className="screen-enter">
-      <div className="topbar">
-        <div>
-          <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR · 教練</div>
-          <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, letterSpacing:".04em" }}>Coach Dashboard</div>
-        </div>
-        <div className="avatar coach-av-header" style={(() => { const c = getAvatarColor(profile?.name||"教"); return { background: c.bg, color: c.text, borderColor: c.bg }; })()}>
-          {(profile?.name||"教").slice(0,1)}
-        </div>
-      </div>
       <div className="content">
+
+        {/* ── 今天的課（簽到、上傳照片、簽退都從這裡進入）── */}
+        <div className="sec-h" style={{ marginTop:4 }}>今天的課</div>
+        {todayClasses.length === 0
+          ? <div className="card empty" style={{ padding:"16px 12px" }}>今天沒有排定的課</div>
+          : todayClasses.map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} />)}
+
+        {toFix.length > 0 && (
+          <div className="alert-card" style={{ background:"#FCEFD2", borderColor:"rgba(138,90,16,.25)" }}>
+            <div className="alert-t" style={{ color:"#8A5A10" }}>{toFix.length} 堂課的交付紀錄還沒完成</div>
+            <div className="alert-s">上傳上課照片並簽退，課程時數才會列入完整交付</div>
+            {toFix.slice(0, 4).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
+          </div>
+        )}
 
         {/* ── 今日摘要卡 ── */}
         <div className="card-glass" style={{ marginBottom:12 }}>
-          <div style={{ fontFamily:"var(--font)", fontSize:20, fontWeight:600 }}>{profile?.name||"教練"}</div>
+          <div style={{ fontFamily:"var(--font)", fontSize:fz(22), fontWeight:600 }}>{profile?.name||"教練"}</div>
           <div style={{ display:"flex", gap:20, marginTop:12 }}>
             <div>
-              <div style={{ fontFamily:"var(--font)", fontSize:26, fontWeight:600, color:"var(--sage)" }}>{students.length}</div>
-              <div style={{ fontSize:11, color:"var(--ink-3)", letterSpacing:".06em", textTransform:"uppercase", marginTop:2 }}>學員</div>
+              <div style={{ fontFamily:"var(--font)", fontSize:fz(28), fontWeight:600, color:"var(--sage)" }}>{students.length}</div>
+              <div style={{ fontSize:fz(13), color:"var(--ink-3)", letterSpacing:".02em", textTransform:"uppercase", marginTop:2 }}>學員</div>
             </div>
             <div style={{ width:1, background:"var(--cream-3)" }} />
             <div>
-              <div style={{ fontFamily:"var(--font)", fontSize:26, fontWeight:600, color:"var(--gold)" }}>{moduleCount}</div>
-              <div style={{ fontSize:11, color:"var(--ink-3)", letterSpacing:".06em", textTransform:"uppercase", marginTop:2 }}>課程模組</div>
+              <div style={{ fontFamily:"var(--font)", fontSize:fz(28), fontWeight:600, color:"var(--gold)" }}>{moduleCount}</div>
+              <div style={{ fontSize:fz(13), color:"var(--ink-3)", letterSpacing:".02em", textTransform:"uppercase", marginTop:2 }}>課程模組</div>
             </div>
             <div style={{ width:1, background:"var(--cream-3)" }} />
             <div>
-              <div style={{ fontFamily:"var(--font)", fontSize:26, fontWeight:600, color: unassigned.length > 0 ? "var(--rust)" : "var(--ink)" }}>{unassigned.length}</div>
-              <div style={{ fontSize:11, color:"var(--ink-3)", letterSpacing:".06em", textTransform:"uppercase", marginTop:2 }}>待分配</div>
+              <div style={{ fontFamily:"var(--font)", fontSize:fz(28), fontWeight:600, color: unassigned.length > 0 ? "var(--rust)" : "var(--ink)" }}>{unassigned.length}</div>
+              <div style={{ fontSize:fz(13), color:"var(--ink-3)", letterSpacing:".02em", textTransform:"uppercase", marginTop:2 }}>待分配</div>
             </div>
           </div>
         </div>
@@ -2549,20 +3119,20 @@ function CHome({ onSwitch }) {
           <>
             <div className="sec-h">需要關注</div>
             <div className="card" style={{ borderLeft:"2px solid var(--rust)", padding:"12px 16px", cursor:"pointer" }} onClick={() => onSwitch("assign")}>
-              <div style={{ fontSize:10, letterSpacing:".1em", textTransform:"uppercase", color:"var(--rust)", marginBottom:6, fontWeight:700 }}>尚未分配課程</div>
+              <div style={{ fontSize:fz(12), letterSpacing:".02em", textTransform:"uppercase", color:"var(--rust)", marginBottom:6, fontWeight:700 }}>尚未分配課程</div>
               {unassigned.slice(0,3).map((s, i) => (
                 <div key={s.uid} style={{ display:"flex", alignItems:"center", gap:10, paddingTop: i > 0 ? 8 : 0, borderTop: i > 0 ? "1px solid var(--cream-3)" : "none" }}>
-                  <div className="coach-av" style={{ ...(() => { const c = getAvatarColor(s.name||""); return { background:c.bg, color:c.text }; })(), width:28, height:28, fontSize:11 }}>
+                  <div className="coach-av" style={{ ...(() => { const c = getAvatarColor(s.name||""); return { background:c.bg, color:c.text }; })(), width:28, height:28, fontSize:fz(13) }}>
                     {s.name?.slice(0,2)||"??"}
                   </div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13, fontWeight:600 }}>{s.name}</div>
-                    <div style={{ fontSize:11, color:"var(--ink-3)", fontStyle:"italic" }}>{s.courseType||"—"}</div>
+                    <div style={{ fontSize:fz(15), fontWeight:600 }}>{s.name}</div>
+                    <div style={{ fontSize:fz(13), color:"var(--ink-3)" }}>{s.courseType||"—"}</div>
                   </div>
                 </div>
               ))}
               {unassigned.length > 3 && (
-                <div style={{ fontSize:12, color:"var(--rust)", marginTop:8, fontStyle:"italic" }}>
+                <div style={{ fontSize:fz(14), color:"var(--rust)", marginTop:8 }}>
                   還有 {unassigned.length - 3} 位學員等待分配 →
                 </div>
               )}
@@ -2577,16 +3147,16 @@ function CHome({ onSwitch }) {
             <div className="card" style={{ padding:"4px 14px" }}>
               {students.slice(0,4).map((s,i) => (
                 <div key={s.uid} className="coach-row" style={i === Math.min(students.length,4)-1 ? {borderBottom:"none"} : {}}>
-                  <div className="coach-av" style={(() => { const c = getAvatarColor(s.name||""); return { background:c.bg, color:c.text, fontSize:12 }; })()} >{s.name?.slice(0,2)||"??"}</div>
+                  <div className="coach-av" style={(() => { const c = getAvatarColor(s.name||""); return { background:c.bg, color:c.text, fontSize:fz(14) }; })()} >{s.name?.slice(0,2)||"??"}</div>
                   <div style={{ flex:1 }}>
                     <div className="coach-name">{s.name}</div>
                     <div className="coach-tag">{s.courseType||"—"}</div>
                   </div>
-                  <button className="btn btn-sm" style={{ fontSize:11, padding:"4px 10px" }} onClick={() => onSwitch("assign")}>分配</button>
+                  <button className="btn btn-sm" style={{ fontSize:fz(13), padding:"4px 10px" }} onClick={() => onSwitch("assign")}>分配</button>
                 </div>
               ))}
               {students.length > 4 && (
-                <div style={{ textAlign:"center", fontSize:12, color:"var(--ink-3)", padding:"8px 0", fontStyle:"italic", borderTop:"1px solid var(--cream-3)" }}>
+                <div style={{ textAlign:"center", fontSize:fz(14), color:"var(--ink-3)", padding:"8px 0", borderTop:"1px solid var(--cream-3)" }}>
                   共 {students.length} 位學員
                 </div>
               )}
@@ -2600,7 +3170,7 @@ function CHome({ onSwitch }) {
           if (!claims.length) return null;
           return (
             <div className="alert-card" style={{ background:"var(--gold-pale)", borderColor:"var(--gold-line)" }}>
-              <div style={{ fontSize:14, fontWeight:700, color:"var(--gold)", marginBottom:6 }}>{claims.length} 個里程碑回報等你確認</div>
+              <div style={{ fontSize:fz(16), fontWeight:700, color:"var(--gold)", marginBottom:6 }}>{claims.length} 個里程碑回報等你確認</div>
               {claims.slice(0, 4).map(c => {
                 const st = students.find(x => x.uid === c.j.id);
                 return (
@@ -2624,13 +3194,13 @@ function CHome({ onSwitch }) {
                 const pc = j ? pendingClaims(j).length : 0;
                 return (
                   <button key={st.uid} className="coach-row grow-row" style={i === students.length - 1 ? { borderBottom:"none" } : {}} onClick={() => setJStudent(st)}>
-                    <div className="coach-av" style={(() => { const c = getAvatarColor(st.name || ""); return { background:c.bg, color:c.text, fontSize:12 }; })()}>{st.name?.slice(0,2)}</div>
+                    <div className="coach-av" style={(() => { const c = getAvatarColor(st.name || ""); return { background:c.bg, color:c.text, fontSize:fz(14) }; })()}>{st.name?.slice(0,2)}</div>
                     <div style={{ flex:1, minWidth:0, textAlign:"left" }}>
                       <div className="coach-name">{st.name}{pc > 0 && <span className="nav-badge" style={{ position:"static", display:"inline-flex", marginLeft:6 }}>{pc}</span>}</div>
                       <div className="coach-tag">{stage ? `${j.currentStage}. ${stage.name} · 已 ${daysInStage(j)} 天` : "建立中…"}</div>
                       {j && <div style={{ marginTop:5 }}><StageBar journey={j} /></div>}
                     </div>
-                    <span style={{ fontSize:13, color:"var(--gold)", fontWeight:600, flexShrink:0 }}>{j ? `${overallProgress(j)}%` : ""}</span>
+                    <span style={{ fontSize:fz(15), color:"var(--gold)", fontWeight:600, flexShrink:0 }}>{j ? `${overallProgress(j)}%` : ""}</span>
                   </button>
                 );
               })}
@@ -2641,7 +3211,7 @@ function CHome({ onSwitch }) {
         {/* ── 近期課表 ── */}
         <div className="sec-h" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <span>近期課表</span>
-          <button style={{ fontSize:11, color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)", fontStyle:"italic" }} onClick={() => onSwitch("assign")}>前往排課 →</button>
+          <button style={{ fontSize:fz(13), color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)" }} onClick={() => onSwitch("assign")}>前往排課 →</button>
         </div>
         {(schedCnt.reschedule > 0 || schedCnt.pending > 0) && (
           <div style={{ display:"flex", gap:8, marginBottom:8 }}>
@@ -2651,7 +3221,7 @@ function CHome({ onSwitch }) {
         )}
         {upcoming.length === 0
           ? <button className="card empty" style={{ width:"100%", cursor:"pointer", fontFamily:"var(--font)", padding:"18px 12px" }} onClick={() => onSwitch("assign")}>近期沒有排課 · 點此開始排課</button>
-          : upcoming.slice(0, 3).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={() => onSwitch("assign")} showDate />)}
+          : upcoming.slice(0, 3).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
 
         {/* ── 學員反饋 ── */}
         {feedbacks.length > 0 && (
@@ -2659,8 +3229,8 @@ function CHome({ onSwitch }) {
             <div className="sec-h">學員最新反饋</div>
             {feedbacks.map(f => (
               <div key={f.id} className="card card-sm">
-                <div style={{ fontSize:11, color:"var(--gold)", fontWeight:700, marginBottom:4 }}>{f.studentName || "學員"} · {f.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || ""}</div>
-                <div style={{ fontSize:13, color:"var(--ink-2)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>{f.text.length > 100 ? f.text.slice(0,100) + "…" : f.text}</div>
+                <div style={{ fontSize:fz(13), color:"var(--gold)", fontWeight:700, marginBottom:4 }}>{f.studentName || "學員"} · {f.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || ""}</div>
+                <div style={{ fontSize:fz(15), color:"var(--ink-2)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>{f.text.length > 100 ? f.text.slice(0,100) + "…" : f.text}</div>
               </div>
             ))}
           </>
@@ -2671,16 +3241,16 @@ function CHome({ onSwitch }) {
           <>
             <div className="sec-h" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span>最近記錄</span>
-              <button style={{ fontSize:11, color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)", fontStyle:"italic" }} onClick={() => onSwitch("records")}>查看全部 →</button>
+              <button style={{ fontSize:fz(13), color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)" }} onClick={() => onSwitch("records")}>查看全部 →</button>
             </div>
             {recentRecords.map(r => (
               <div key={r.id} className="card card-sm" style={{ marginBottom:7 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                   <div>
-                    <div style={{ fontSize:13, fontWeight:600, fontFamily:"var(--font)" }}>{r.topic}</div>
-                    <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>{r.date} · {r.studentName||"—"}</div>
+                    <div style={{ fontSize:fz(15), fontWeight:600, fontFamily:"var(--font)" }}>{r.topic}</div>
+                    <div style={{ fontSize:fz(13), color:"var(--ink-3)", marginTop:2 }}>{r.date} · {r.studentName||"—"}</div>
                   </div>
-                  {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:10, flexShrink:0, marginLeft:8 }}>學員可見</span>}
+                  {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:fz(12), flexShrink:0, marginLeft:8 }}>學員可見</span>}
                 </div>
               </div>
             ))}
@@ -2689,14 +3259,20 @@ function CHome({ onSwitch }) {
 
         {/* ── 空狀態 ── */}
         {!loading && students.length === 0 && (
-          <div className="card" style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, padding:"28px 16px", lineHeight:1.7 }}>
+          <div className="card" style={{ textAlign:"center", color:"var(--ink-3)", fontSize:fz(15), padding:"28px 16px", lineHeight:1.7 }}>
             還沒有學員<br />
-            <span style={{ fontSize:12, fontStyle:"italic" }}>請聯絡管理員新增學員至系統</span>
+            <span style={{ fontSize:fz(14) }}>請聯絡管理員新增學員至系統</span>
           </div>
         )}
 
       </div>
       {jStudent && <StudentJourneySheet student={jStudent} onClose={() => setJStudent(null)} onChanged={() => setJRefresh(r => r + 1)} />}
+      {sheet && (
+        <SessionSheet s={sheet} viewer="coach" onClose={() => { setSheet(null); setSRefresh(r => r + 1); }}
+          onChanged={(msg, o) => { if (msg) setToast(msg); if (!o?.keepOpen) setSRefresh(r => r + 1); }}
+          onEdit={() => { setSheet(null); onSwitch("assign"); }} onWriteRecord={writeRecord} />
+      )}
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={C_TABS} active="home" onSwitch={onSwitch} />
     </div>
   );
@@ -2712,14 +3288,14 @@ function ModuleCard({ m, isOwn, onOpen }) {
       background: isOwn ? color.bg : "#fff", borderColor: isOwn ? color.border : "var(--cream-3)", borderLeftColor: color.border }}>
       <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
         <span className="cal-dot" style={{ background: color.border, width:7, height:7 }} />
-        <span style={{ fontSize:11, color: color.border, fontWeight:700 }}>{m.coachName || "—"}</span>
+        <span style={{ fontSize:fz(13), color: color.border, fontWeight:700 }}>{m.coachName || "—"}</span>
         {isOwn && <span className="mod-mine" style={{ color: color.border, borderColor: color.border }}>我的</span>}
       </div>
       <div className="mod-title">{m.title}</div>
       {m.outline && <div className="mod-outline mod-clamp">{m.outline}</div>}
       <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:8 }}>
-        {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background:"rgba(255,255,255,.75)", color: color.border, border:`1px solid ${color.border}`, fontSize:10 }}>{s}</span>)}
-        {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>}
+        {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background:"rgba(255,255,255,.75)", color: color.border, border:`1px solid ${color.border}`, fontSize:fz(12) }}>{s}</span>)}
+        {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(12) }}>⏱ {m.duration}</span>}
       </div>
       <div className="mod-foot">
         <span>📎 {count == null ? "…" : count} 份學習資料</span>
@@ -2774,10 +3350,10 @@ function CModules({ onSwitch, onModal }) {
 
       <div className="inner-tabs" style={{ padding:"0 16px" }}>
         <button className={"inner-tab"+(tab==="mine"?" active":"")} onClick={() => setTab("mine")}>
-          我的課程 {!loading && <span style={{ fontSize:10, marginLeft:4, opacity:.7 }}>({myModules.length})</span>}
+          我的課程 {!loading && <span style={{ fontSize:fz(12), marginLeft:4, opacity:.7 }}>({myModules.length})</span>}
         </button>
         <button className={"inner-tab"+(tab==="all"?" active":"")} onClick={() => setTab("all")}>
-          聯盟課程 {!loading && <span style={{ fontSize:10, marginLeft:4, opacity:.7 }}>({allModules.length})</span>}
+          聯盟課程 {!loading && <span style={{ fontSize:fz(12), marginLeft:4, opacity:.7 }}>({allModules.length})</span>}
         </button>
       </div>
 
@@ -2788,7 +3364,7 @@ function CModules({ onSwitch, onModal }) {
               {tab === "mine"
                 ? <><span>尚未建立課程模組</span><br/>
                     <button className="btn" style={{ marginTop:16 }} onClick={handleModal}><IcPlus />新增第一個課程模組</button></>
-                : <span style={{ fontStyle:"italic" }}>其他教練目前尚無課程模組</span>}
+                : <span style={{ }}>其他教練目前尚無課程模組</span>}
             </div>
           ) : displayList.map(m => <ModuleCard key={m.id} m={m} isOwn={tab === "mine"} onOpen={(x) => setSheetId(x.id)} />)}
       </div>
@@ -2860,8 +3436,8 @@ function AssignPanel() {
   return (
       <div className="content" style={{ paddingTop:12 }}>
         {students.length === 0 ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>
-            尚無學員<br/><span style={{ fontSize:12 }}>請先在「成員管理」新增學員</span>
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:fz(15),marginTop:48,lineHeight:1.7 }}>
+            尚無學員<br/><span style={{ fontSize:fz(14) }}>請先在「成員管理」新增學員</span>
           </div>
         ) : (
           <>
@@ -2874,20 +3450,20 @@ function AssignPanel() {
             </div>
             {selStudent && (
               <>
-                <div style={{ fontSize:13,color:"var(--ink-3)",marginBottom:12,lineHeight:1.6 }}>
+                <div style={{ fontSize:fz(15),color:"var(--ink-3)",marginBottom:12,lineHeight:1.6 }}>
                   為 <strong style={{ color:"var(--ink)" }}>{selStudent.name}</strong> 分配課程模組
                 </div>
                 <div className="sec-h">可用模組</div>
                 <div className="module-pool">
                   {modulePool.length === 0
-                    ? <span style={{ fontSize:12,color:"var(--ink-3)",fontStyle:"italic" }}>你尚未建立任何課程模組，請至「模組」頁面新增</span>
+                    ? <span style={{ fontSize:fz(14),color:"var(--ink-3)" }}>你尚未建立任何課程模組，請至「模組」頁面新增</span>
                     : modulePool.map(m => {
                         const mc = getCoachModuleColor(m.coachId || "");
                         return (
                           <span key={m.id}
                             style={{ display:"inline-flex", alignItems:"center", gap:6,
                               padding:"5px 11px", borderRadius:"var(--r-pill)",
-                              fontSize:12, fontWeight:500, cursor:"pointer",
+                              fontSize:fz(14), fontWeight:500, cursor:"pointer",
                               background: mc.bg, color: mc.border,
                               border: `1px solid ${mc.border}` }}
                             onClick={() => addModule(m)}>
@@ -2898,7 +3474,7 @@ function AssignPanel() {
                   }
                 </div>
                 <div className="sec-h">{selStudent.name} 的專屬課程</div>
-                {otherIds.length > 0 && <div style={{ fontSize:12, color:"var(--ink-3)", fontStyle:"italic", marginTop:-4, marginBottom:8 }}>另有 {otherIds.length} 個其他教練分配的模組，儲存時會保留。</div>}
+                {otherIds.length > 0 && <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:-4, marginBottom:8 }}>另有 {otherIds.length} 個其他教練分配的模組，儲存時會保留。</div>}
                 <div className="drop-zone">
                   <div className="drop-label">↑ 點擊上方模組加入 · 點 × 移除</div>
                   <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
@@ -2908,7 +3484,7 @@ function AssignPanel() {
                         <span key={a.id}
                           style={{ display:"inline-flex", alignItems:"center", gap:6,
                             padding:"5px 11px", borderRadius:"var(--r-pill)",
-                            fontSize:12, fontWeight:500, cursor:"pointer",
+                            fontSize:fz(14), fontWeight:500, cursor:"pointer",
                             background: mc.bg, color: mc.border,
                             border: `1px solid ${mc.border}`,
                             opacity: 0.85 }}
@@ -2920,7 +3496,7 @@ function AssignPanel() {
                   </div>
                 </div>
                 {saved && (
-                  <div style={{ padding:"10px 14px",borderRadius:"var(--r)",marginTop:10,fontSize:13,textAlign:"center",background:"var(--sage-pale)",border:"1px solid rgba(74,123,90,.22)",color:"var(--sage)" }}>
+                  <div style={{ padding:"10px 14px",borderRadius:"var(--r)",marginTop:10,fontSize:fz(15),textAlign:"center",background:"var(--sage-pale)",border:"1px solid rgba(74,123,90,.22)",color:"var(--sage)" }}>
                     ✓ 課程安排已儲存
                   </div>
                 )}
@@ -2958,7 +3534,8 @@ function CSchedule({ onSwitch, onModal }) {
   const future = sessions.filter(s => !isPast(s));
   const counts = countByStatus(future);
   const reschedule = sortSessions(future.filter(s => s.status === "reschedule"));
-  const toRecord = sortSessions(sessions.filter(s => isPast(s) && s.status === "confirmed" && s.studentUid && !s.recorded)).reverse();
+  const toRecord = sortSessions(sessions.filter(s => isPast(s) && s.status === "confirmed" && s.studentUid && !s.recorded && s.checkOut)).reverse();
+  const toFinish = sortSessions(sessions.filter(s => s.date >= addDays(todayStr(), -30) && ["needOut", "missed"].includes(attendanceState(s)))).reverse();
 
   const done = (msg) => { setToast(msg); setRefresh(r => r + 1); };
 
@@ -3000,13 +3577,20 @@ function CSchedule({ onSwitch, onModal }) {
               {/* 需要教練處理：改期請求、待補記錄 */}
               {!filter && reschedule.length > 0 && (
                 <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)" }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:"var(--rust)", marginBottom:8 }}>{reschedule.length} 位學員請求改期</div>
+                  <div style={{ fontSize:fz(16), fontWeight:700, color:"var(--rust)", marginBottom:8 }}>{reschedule.length} 位學員請求改期</div>
                   {reschedule.map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
+                </div>
+              )}
+              {!filter && toFinish.length > 0 && (
+                <div className="alert-card" style={{ background:"#FCEFD2", borderColor:"rgba(138,90,16,.25)" }}>
+                  <div className="alert-t" style={{ color:"#8A5A10" }}>{toFinish.length} 堂課待簽退或未簽到</div>
+                  <div className="alert-s">點開課程，上傳照片並簽退，才算完成交付</div>
+                  {toFinish.slice(0, 4).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
                 </div>
               )}
               {!filter && toRecord.length > 0 && (
                 <div className="alert-card" style={{ background:"var(--gold-pale)", borderColor:"var(--gold-line)" }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:"var(--gold)", marginBottom:8 }}>{toRecord.length} 堂課已上完，還沒寫上課記錄</div>
+                  <div style={{ fontSize:fz(16), fontWeight:700, color:"var(--gold)", marginBottom:8 }}>{toRecord.length} 堂課已上完，還沒寫上課記錄</div>
                   {toRecord.slice(0, 3).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
                 </div>
               )}
@@ -3048,7 +3632,11 @@ function CSchedule({ onSwitch, onModal }) {
 }
 
 function CRecords({ onSwitch, onModal }) {
-  const { profile, fetchRecords, deleteRecord } = useAuth();
+  const { profile, fetchRecords, deleteRecord, fetchSessions } = useAuth();
+  const [tab,        setTab]        = useState("records");
+  const [sessions,   setSessions]   = useState([]);
+  const [sheet,      setSheet]      = useState(null);
+  const [toast,      setToast]      = useState("");
   const [confirmDel, setConfirmDel] = useState(null);
   const [records,    setRecords]    = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -3061,6 +3649,7 @@ function CRecords({ onSwitch, onModal }) {
       setRecords(all.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
       setLoading(false);
     }).catch(() => setLoading(false));
+    if (profile?.uid) fetchSessions({ coachId: profile.uid }).then(setSessions).catch(() => {});
   }, [refreshKey]);
 
   const handleModal = () => onModal("record", () => setRefreshKey(k => k + 1));
@@ -3074,15 +3663,21 @@ function CRecords({ onSwitch, onModal }) {
   return (
     <div className="screen-enter">
       <div className="topbar">
-        <div className="topbar-title">上課記錄</div>
-        <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增</button>
+        <div className="topbar-title">記錄與時數</div>
+        {tab === "records" && <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增記錄</button>}
       </div>
-      <div className="content">
-        {loading ? (
-          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48 }}>載入中…</div>
+      <div className="inner-tabs" style={{ padding:"0 16px" }}>
+        <button className={"inner-tab"+(tab==="records"?" active":"")} onClick={() => setTab("records")}>上課記錄</button>
+        <button className={"inner-tab"+(tab==="hours"?" active":"")} onClick={() => setTab("hours")}>上課時數</button>
+      </div>
+      <div className="content" style={{ paddingTop:12 }}>
+        {tab === "hours" ? (
+          <HoursReport sessions={sessions} viewer="coach" onOpen={setSheet} />
+        ) : loading ? (
+          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:fz(15), marginTop:48 }}>載入中…</div>
         ) : records.length === 0 ? (
-          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, marginTop:48, lineHeight:1.7 }}>
-            尚無上課記錄<br /><span style={{ fontSize:12, fontStyle:"italic" }}>點右上角「新增」記錄上課狀況</span>
+          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:fz(15), marginTop:48, lineHeight:1.7 }}>
+            尚無上課記錄<br /><span style={{ fontSize:fz(14) }}>點右上角「新增」記錄上課狀況</span>
           </div>
         ) : (
           records.map(r => (
@@ -3090,14 +3685,14 @@ function CRecords({ onSwitch, onModal }) {
               {/* 標題列 */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                 <div>
-                  <div style={{ fontSize:15, fontWeight:600, fontFamily:"var(--font)" }}>{r.topic}</div>
-                  <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>
+                  <div style={{ fontSize:fz(17), fontWeight:600, fontFamily:"var(--font)" }}>{r.topic}</div>
+                  <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:2 }}>
                     {r.date} · {r.studentName || "—"} · {r.coachName || "—"}
                   </div>
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"flex-end", flexShrink:0, marginLeft:8 }}>
-                  {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:10 }}>學員可見</span>}
-                  {r.visibleCoach   && <span className="badge badge-nebula" style={{ fontSize:10 }}>教練可見</span>}
+                  {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:fz(12) }}>學員可見</span>}
+                  {r.visibleCoach   && <span className="badge badge-nebula" style={{ fontSize:fz(12) }}>教練可見</span>}
                 </div>
               </div>
               {/* 給學員的回饋 */}
@@ -3132,6 +3727,8 @@ function CRecords({ onSwitch, onModal }) {
           ))
         )}
       </div>
+      {sheet && <SessionSheet s={sheet} viewer="coach" onClose={() => setSheet(null)} onChanged={(m) => { if (m) setToast(m); setRefreshKey(k => k + 1); }} />}
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={C_TABS} active="records" onSwitch={onSwitch} />
     </div>
   );
@@ -3142,29 +3739,50 @@ function CRecords({ onSwitch, onModal }) {
    LOGIN / NO ACCESS
 ════════════════════════════════════════ */
 function LoginScreen() {
-  const { loginWithEmail, error, loading } = useAuth();
+  const { loginWithEmail, resetPassword, error, setError, loading } = useAuth();
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
-  const handleSubmit = e => { e.preventDefault(); if(email&&password)loginWithEmail(email,password); };
+  const [show,     setShow]     = useState(false);
+  const [busy,     setBusy]     = useState(false);
+  const [notice,   setNotice]   = useState("");
+  const handleSubmit = async e => {
+    e.preventDefault(); setNotice("");
+    if (!email || !password) { setError("請輸入 Email 和密碼。"); return; }
+    setBusy(true); await loginWithEmail(email, password); setBusy(false);
+  };
+  const forgot = async () => {
+    setNotice(""); setError("");
+    if (!email.trim()) { setError("請先在上方輸入你的 Email，再按「忘記密碼」。"); return; }
+    const r = await resetPassword(email);
+    if (r.success) setNotice(`如果 ${email.trim().toLowerCase()} 是已註冊的帳號，重設密碼信已寄出，請到信箱（含垃圾郵件）收信。`);
+    else setError(r.error);
+  };
   return (
-    <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
+    <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, overflowY:"auto" }}>
       <div className="login-wrap">
         <div className="login-logo">✦</div>
         <div className="login-brand">iSTAR <span>Alliance</span></div>
         <div className="login-sub">星辰聯盟 · 學員成長平台</div>
         <div className="login-card">
-          {error && <div className="login-error">{error}</div>}
+          {error && <div className="login-error" role="alert">{error}</div>}
+          {notice && <div className="login-ok" role="status">{notice}</div>}
           <form onSubmit={handleSubmit}>
-            <div className="input-label">Email</div>
-            <input className="input-field" type="email" placeholder="your@email.com" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" />
-            <div className="input-label">密碼</div>
-            <input className="input-field" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" style={{ marginBottom:18 }} />
-            <button type="submit" className="btn btn-primary" style={{ width:"100%", justifyContent:"center", padding:"13px" }} disabled={loading}>
-              {loading?"登入中…":"登入"}
+            <label className="input-label" htmlFor="login-email">Email</label>
+            <input id="login-email" className="input-field" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+              placeholder="your@email.com" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" />
+            <label className="input-label" htmlFor="login-pw">密碼</label>
+            <div className="pw-wrap">
+              <input id="login-pw" className="input-field" type={show ? "text" : "password"} placeholder="輸入密碼" value={password}
+                onChange={e=>setPassword(e.target.value)} autoComplete="current-password" />
+              <button type="button" className="pw-eye" onClick={() => setShow(v => !v)} aria-label={show ? "隱藏密碼" : "顯示密碼"}>{show ? "隱藏" : "顯示"}</button>
+            </div>
+            <button type="submit" className="btn btn-primary btn-lg" style={{ width:"100%", marginTop:6 }} disabled={loading || busy}>
+              {busy ? "登入中…" : "登入"}
             </button>
           </form>
+          <button type="button" className="link-btn" style={{ display:"block", margin:"14px auto 0" }} onClick={forgot}>忘記密碼？寄送重設信</button>
           <div className="login-no-access">
-            沒有帳號？請聯絡星辰聯盟管理員<br />取得您的專屬登入資格
+            沒有帳號？請聯絡星辰聯盟管理員取得登入資格
           </div>
         </div>
       </div>
@@ -3175,9 +3793,9 @@ function LoginScreen() {
 function NoAccessScreen({ user, logout }) {
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32 }}>
-      <div style={{ fontFamily:"var(--font)", fontSize:40, color:"var(--gold)", marginBottom:14 }}>✦</div>
-      <div style={{ fontFamily:"var(--font)", fontSize:20, fontWeight:600, color:"var(--gold)", marginBottom:10 }}>尚未取得存取權限</div>
-      <div style={{ fontSize:13, color:"var(--ink-3)", textAlign:"center", lineHeight:1.75, marginBottom:28 }}>
+      <div style={{ fontFamily:"var(--font)", fontSize:fz(42), color:"var(--gold)", marginBottom:14 }}>✦</div>
+      <div style={{ fontFamily:"var(--font)", fontSize:fz(22), fontWeight:600, color:"var(--gold)", marginBottom:10 }}>尚未取得存取權限</div>
+      <div style={{ fontSize:fz(15), color:"var(--ink-3)", textAlign:"center", lineHeight:1.75, marginBottom:28 }}>
         帳號（{user?.email}）<br />尚未被加入星辰聯盟系統。<br />請聯絡管理員開通您的權限。
       </div>
       <button className="btn" onClick={logout}>登出</button>
@@ -3202,11 +3820,15 @@ const A_TABS = [
   { key:"home",    label:"總覽",   Icon:IcHome  },
   { key:"members", label:"成員",   Icon:IcUsers },
   { key:"review",  label:"課程管理", Icon:IcLayer },
-  { key:"records", label:"所有記錄", Icon:IcDoc  },
+  { key:"records", label:"交付記錄", Icon:IcDoc  },
 ];
 
 function AHome({ onSwitch }) {
-  const { profile, fetchMembers, fetchModules, fetchRecords, ensureJourneys } = useAuth();
+  const { profile, fetchMembers, fetchModules, fetchRecords, ensureJourneys, fetchSessions } = useAuth();
+  const [allSessions, setAllSessions] = useState([]);
+  useEffect(() => { fetchSessions().then(setAllSessions).catch(() => {}); }, []);
+  const mr = monthRange(todayStr().slice(0, 7));
+  const monthTotals = totals(summarize(allSessions.filter(s => inRange(s, mr.from, mr.to))));
   const [journeys, setJourneys] = useState([]);
   const [jStudent, setJStudent] = useState(null);
   const [data,    setData]    = useState({ members:[], coaches:[], students:[], modules:[], recentRecords:[] });
@@ -3229,21 +3851,12 @@ function AHome({ onSwitch }) {
 
   return (
     <div className="screen-enter">
-      <div className="topbar">
-        <div>
-          <div className="istar-logo"><span className="istar-mark">✦</span> iSTAR · 管理員</div>
-          <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, letterSpacing:".04em" }}>Admin Dashboard</div>
-        </div>
-        <div className="avatar" style={(() => { const c = getAvatarColor(profile?.name||"管"); return { background:c.bg, color:c.text, borderColor:c.bg }; })()}>
-          {(profile?.name||"管").slice(0,1)}
-        </div>
-      </div>
       <div className="content">
 
         {/* ── 歡迎卡 ── */}
         <div className="card-gold" style={{ marginBottom:12 }}>
-          <div style={{ fontFamily:"var(--font)", fontSize:20, fontWeight:600 }}>{profile?.name||"管理員"}</div>
-          <div style={{ fontSize:13, color:"rgba(197,162,74,.7)", marginTop:3, fontStyle:"italic" }}>iSTAR Alliance 系統管理員</div>
+          <div style={{ fontFamily:"var(--font)", fontSize:fz(22), fontWeight:600 }}>{profile?.name||"管理員"}</div>
+          <div style={{ fontSize:fz(15), color:"rgba(197,162,74,.7)", marginTop:3 }}>iSTAR Alliance 系統管理員</div>
           <div style={{ display:"flex", gap:18, marginTop:14, paddingTop:14, borderTop:"1px solid rgba(197,162,74,.2)" }}>
             {[
               { num: data.members.length, label:"總成員" },
@@ -3252,12 +3865,23 @@ function AHome({ onSwitch }) {
               { num: data.modules.length, label:"課程模組" },
             ].map(({ num, label }) => (
               <div key={label} style={{ textAlign:"center" }}>
-                <div style={{ fontFamily:"var(--font)", fontSize:22, fontWeight:600, color:"var(--gold)" }}>{loading ? "—" : num}</div>
-                <div style={{ fontSize:10, color:"rgba(197,162,74,.6)", letterSpacing:".08em", textTransform:"uppercase", marginTop:2 }}>{label}</div>
+                <div style={{ fontFamily:"var(--font)", fontSize:fz(24), fontWeight:600, color:"var(--gold)" }}>{loading ? "—" : num}</div>
+                <div style={{ fontSize:fz(12), color:"rgba(197,162,74,.6)", letterSpacing:".02em", textTransform:"uppercase", marginTop:2 }}>{label}</div>
               </div>
             ))}
           </div>
         </div>
+
+        {/* ── 本月課程交付 ── */}
+        <button className="card deliver-card" onClick={() => onSwitch("records")}>
+          <div className="deliver-h"><span>本月課程交付</span><span className="link-btn">查看報表 →</span></div>
+          <div className="deliver-row">
+            <div><b>{toHours(monthTotals.deliveredMin)}</b><span>實際時數</span></div>
+            <div><b>{monthTotals.done}／{monthTotals.total}</b><span>完成堂數</span></div>
+            <div><b style={{ color:"var(--sage)" }}>{monthTotals.total ? Math.round(monthTotals.done / monthTotals.total * 100) : 0}%</b><span>交付率</span></div>
+            <div><b style={{ color: monthTotals.missed + monthTotals.needOut ? "var(--rust)" : "inherit" }}>{monthTotals.missed + monthTotals.needOut}</b><span>待補</span></div>
+          </div>
+        </button>
 
         {/* ── 聯盟成長漏斗：看出哪個階段最需要投入資源 ── */}
         {!loading && <AllianceFunnel journeys={journeys} students={data.students} onOpen={setJStudent} />}
@@ -3267,7 +3891,7 @@ function AHome({ onSwitch }) {
           <>
             <div className="sec-h" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span>成員概況</span>
-              <button style={{ fontSize:11, color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)", fontStyle:"italic" }} onClick={() => onSwitch("members")}>管理全部 →</button>
+              <button style={{ fontSize:fz(13), color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)" }} onClick={() => onSwitch("members")}>管理全部 →</button>
             </div>
             <div className="card" style={{ padding:"4px 14px" }}>
               {data.members.slice(0,4).map((m, i) => {
@@ -3278,17 +3902,17 @@ function AHome({ onSwitch }) {
                   : { bg:"var(--slate-pale)", color:"var(--slate)", border:"rgba(58,74,107,.18)", label:"學員" };
                 return (
                   <div key={m.uid} className="coach-row" style={i===Math.min(data.members.length,4)-1?{borderBottom:"none"}:{}}>
-                    <div className="coach-av" style={(() => { const c=getAvatarColor(m.name||""); return {background:c.bg,color:c.text,fontSize:12}; })()}>{m.name?.slice(0,2)||"??"}</div>
+                    <div className="coach-av" style={(() => { const c=getAvatarColor(m.name||""); return {background:c.bg,color:c.text,fontSize:fz(14)}; })()}>{m.name?.slice(0,2)||"??"}</div>
                     <div style={{ flex:1 }}>
                       <div className="coach-name">{m.name}</div>
                       <div className="coach-tag">{m.email}</div>
                     </div>
-                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:"var(--r-pill)", background:rc.bg, color:rc.color, border:`1px solid ${rc.border}`, flexShrink:0 }}>{rc.label}</span>
+                    <span style={{ fontSize:fz(12), fontWeight:700, padding:"2px 8px", borderRadius:"var(--r-pill)", background:rc.bg, color:rc.color, border:`1px solid ${rc.border}`, flexShrink:0 }}>{rc.label}</span>
                   </div>
                 );
               })}
               {data.members.length > 4 && (
-                <div style={{ textAlign:"center", fontSize:12, color:"var(--ink-3)", padding:"8px 0", fontStyle:"italic", borderTop:"1px solid var(--cream-3)" }}>
+                <div style={{ textAlign:"center", fontSize:fz(14), color:"var(--ink-3)", padding:"8px 0", borderTop:"1px solid var(--cream-3)" }}>
                   共 {data.members.length} 位成員
                 </div>
               )}
@@ -3301,12 +3925,12 @@ function AHome({ onSwitch }) {
           <>
             <div className="sec-h" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span>最近上課記錄</span>
-              <button style={{ fontSize:11, color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)", fontStyle:"italic" }} onClick={() => onSwitch("records")}>查看全部 →</button>
+              <button style={{ fontSize:fz(13), color:"var(--gold)", background:"none", border:"none", cursor:"pointer", fontFamily:"var(--font)" }} onClick={() => onSwitch("records")}>查看全部 →</button>
             </div>
             {data.recentRecords.map(r => (
               <div key={r.id} className="card card-sm" style={{ marginBottom:7 }}>
-                <div style={{ fontSize:13, fontWeight:600, fontFamily:"var(--font)" }}>{r.topic}</div>
-                <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2, fontStyle:"italic" }}>
+                <div style={{ fontSize:fz(15), fontWeight:600, fontFamily:"var(--font)" }}>{r.topic}</div>
+                <div style={{ fontSize:fz(13), color:"var(--ink-3)", marginTop:2 }}>
                   {r.date} · 學員：{r.studentName||"—"} · 教練：{r.coachName||"—"}
                 </div>
               </div>
@@ -3316,9 +3940,9 @@ function AHome({ onSwitch }) {
 
         {/* ── 空狀態 ── */}
         {!loading && data.members.length === 0 && (
-          <div className="card" style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13, padding:"28px 16px", lineHeight:1.7 }}>
+          <div className="card" style={{ textAlign:"center", color:"var(--ink-3)", fontSize:fz(15), padding:"28px 16px", lineHeight:1.7 }}>
             系統尚無成員<br />
-            <button className="btn btn-primary" style={{ marginTop:14, fontSize:13 }} onClick={() => onSwitch("members")}>
+            <button className="btn btn-primary" style={{ marginTop:14, fontSize:fz(15) }} onClick={() => onSwitch("members")}>
               + 新增第一位成員
             </button>
           </div>
@@ -3341,7 +3965,7 @@ function AMembers({ onSwitch }) {
   const [editTarget, setEditTarget] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
 
-  const blankForm = { name:"",email:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:todayStr(),roles:["student"] };
+  const blankForm = { name:"",email:"",email2:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:todayStr(),roles:["student"] };
   const [form, setForm] = useState(blankForm);
 
   const loadMembers = () => fetchMembers().then(setMembers).catch(() => {});
@@ -3352,11 +3976,17 @@ function AMembers({ onSwitch }) {
   const handleAdd = async e => {
     e.preventDefault();
     if (!form.name||!form.email||!form.password) { setResult({ok:false,msg:"姓名、Email、密碼為必填。"}); return; }
+    // 再輸入一次 Email：Email 建立後無法修改，打錯字對方就永遠登入不了
+    if (form.email.trim().toLowerCase() !== form.email2.trim().toLowerCase()) { setResult({ok:false,msg:"兩次輸入的 Email 不一樣，請再確認拼字。"}); return; }
+    if (form.password.length < 6) { setResult({ok:false,msg:"密碼至少需要 6 個字元。"}); return; }
     setLoading(true); setResult(null);
     const res = await addMember({...form});
     setLoading(false);
-    if (res.success) { setResult({ok:true,msg:`${form.name} 已成功新增！`}); setForm({...blankForm,roles:form.roles}); }
-    else setResult({ok:false,msg:res.error});
+    if (res.success) {
+      setResult({ ok:true, msg:`${form.name} 已成功新增！`, cred:{ email: form.email.trim().toLowerCase(), password: form.password } });
+      setForm({...blankForm,roles:form.roles});
+    }
+    else setResult({ok:false,msg:res.error === "此 Email 已被使用。" ? "此 Email 已有登入帳號（可能之前刪除過成員，但登入帳號還在 Firebase）。請改用其他 Email，或請系統管理者到 Firebase Authentication 刪除舊帳號。" : res.error});
   };
 
   const startEdit = m => { setEditTarget(m); setForm({name:m.name||"",email:m.email||"",password:"",birthdate:m.birthdate||"",coachName:m.coachName||"",courseType:m.courseType||"個人賦能班",joinDate:m.joinDate||"",roles:(m.roles && m.roles.length ? m.roles : [m.role||"student"])}); setTab("add"); setResult(null); };
@@ -3392,8 +4022,8 @@ function AMembers({ onSwitch }) {
       {confirmDel && (
         <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.5)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
           <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:320 }}>
-            <div style={{ fontFamily:"var(--font)",fontSize:18,fontWeight:600,marginBottom:10 }}>確認刪除成員</div>
-            <div style={{ fontSize:14,color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除 <strong>{members.find(m=>m.uid===confirmDel)?.name}</strong> 嗎？</div>
+            <div style={{ fontFamily:"var(--font)",fontSize:fz(20),fontWeight:600,marginBottom:10 }}>確認刪除成員</div>
+            <div style={{ fontSize:fz(16),color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除 <strong>{members.find(m=>m.uid===confirmDel)?.name}</strong> 嗎？</div>
             <div className="btn-row" style={{ marginTop:0 }}>
               <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
               <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }} onClick={() => handleDelete(confirmDel)}>確認刪除</button>
@@ -3410,24 +4040,24 @@ function AMembers({ onSwitch }) {
       {tab==="list" ? (
         <div className="content">
           <div className="sec-h">所有成員（{members.length} 人）</div>
-          {members.length===0 && <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:36,lineHeight:1.7 }}>還沒有成員<br/><span style={{ fontSize:12 }}>點右上角「+ 新增成員」</span></div>}
+          {members.length===0 && <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:fz(15),marginTop:36,lineHeight:1.7 }}>還沒有成員<br/><span style={{ fontSize:fz(14) }}>點右上角「+ 新增成員」</span></div>}
           {members.map(m => {
             const mRoles = m.roles && m.roles.length ? m.roles : [m.role];
             return (
               <div key={m.uid} className="card card-sm" style={{ marginBottom:8 }}>
                 <div style={{ display:"flex",alignItems:"center",gap:12 }}>
-                  <div className="coach-av" style={(() => { const ac=getAvatarColor(m.name||""); return {background:ac.bg,color:ac.text,fontSize:12,flexShrink:0}; })()}>{m.name?.slice(0,2)||"??"}</div>
+                  <div className="coach-av" style={(() => { const ac=getAvatarColor(m.name||""); return {background:ac.bg,color:ac.text,fontSize:fz(14),flexShrink:0}; })()}>{m.name?.slice(0,2)||"??"}</div>
                   <div style={{ flex:1,minWidth:0 }}>
                     <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:2 }}>
-                      <span style={{ fontSize:14,fontWeight:600,letterSpacing:"-.01em" }}>{m.name}</span>
-                      {mRoles.map(r => { const c = rc(r); return <span key={r} style={{ fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:"var(--r-pill)",background:c.bg,color:c.color,border:`1px solid ${c.border}` }}>{ROLE_NAME[r]}</span>; })}
+                      <span style={{ fontSize:fz(16),fontWeight:600,letterSpacing:"-.01em" }}>{m.name}</span>
+                      {mRoles.map(r => { const c = rc(r); return <span key={r} style={{ fontSize:fz(12),fontWeight:700,padding:"2px 7px",borderRadius:"var(--r-pill)",background:c.bg,color:c.color,border:`1px solid ${c.border}` }}>{ROLE_NAME[r]}</span>; })}
                     </div>
-                    <div style={{ fontSize:11,color:"var(--ink-3)" }}>{m.email}</div>
-                    {m.courseType && <div style={{ fontSize:11,color:"var(--ink-3)",marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
+                    <div style={{ fontSize:fz(13),color:"var(--ink-3)" }}>{m.email}</div>
+                    {m.courseType && <div style={{ fontSize:fz(13),color:"var(--ink-3)",marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
                   </div>
                   <div style={{ display:"flex",gap:6,flexShrink:0 }}>
-                    <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:12 }} onClick={() => startEdit(m)}>編輯</button>
-                    <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:12,color:"var(--rust)",borderColor:"rgba(139,58,42,.2)",background:"var(--rust-pale)" }} onClick={() => setConfirmDel(m.uid)}>刪除</button>
+                    <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:fz(14) }} onClick={() => startEdit(m)}>編輯</button>
+                    <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:fz(14),color:"var(--rust)",borderColor:"rgba(139,58,42,.2)",background:"var(--rust-pale)" }} onClick={() => setConfirmDel(m.uid)}>刪除</button>
                   </div>
                 </div>
               </div>
@@ -3436,8 +4066,20 @@ function AMembers({ onSwitch }) {
         </div>
       ) : (
         <div className="content">
-          {result && <div style={{ padding:"11px 14px",borderRadius:"var(--r)",marginBottom:14,fontSize:13,textAlign:"center",lineHeight:1.5,background:result.ok?"var(--sage-pale)":"var(--rust-pale)",border:`1px solid ${result.ok?"rgba(74,123,90,.22)":"rgba(139,58,42,.2)"}`,color:result.ok?"var(--sage)":"var(--rust)" }}>{result.msg}</div>}
-          {editTarget && <div style={{ padding:"7px 12px",background:"var(--slate-pale)",borderRadius:"var(--r)",marginBottom:14,fontSize:13,color:"var(--slate)",border:"1px solid rgba(58,74,107,.18)" }}>✏ 編輯：{editTarget.name}</div>}
+          {result && <div style={{ padding:"11px 14px",borderRadius:"var(--r)",marginBottom:14,fontSize:fz(15),textAlign:"center",lineHeight:1.5,background:result.ok?"var(--sage-pale)":"var(--rust-pale)",border:`1px solid ${result.ok?"rgba(74,123,90,.22)":"rgba(139,58,42,.2)"}`,color:result.ok?"var(--sage)":"var(--rust)" }}>
+            {result.msg}
+            {result.cred && (
+              <div className="cred">
+                <div>登入 Email：<b>{result.cred.email}</b></div>
+                <div>初始密碼：<b>{result.cred.password}</b></div>
+                <button type="button" className="btn btn-sm" style={{ marginTop:8 }} onClick={() => {
+                  const t = `iSTAR Alliance 星辰聯盟登入資訊\n網址：${location.origin}\n帳號：${result.cred.email}\n密碼：${result.cred.password}`;
+                  navigator.clipboard?.writeText(t).then(() => setResult(r => ({ ...r, copied:true }))).catch(() => {});
+                }}>{result.copied ? "已複製 ✓" : "複製登入資訊給對方"}</button>
+              </div>
+            )}
+          </div>}
+          {editTarget && <div style={{ padding:"7px 12px",background:"var(--slate-pale)",borderRadius:"var(--r)",marginBottom:14,fontSize:fz(15),color:"var(--slate)",border:"1px solid rgba(58,74,107,.18)" }}>✏ 編輯：{editTarget.name}</div>}
           <form onSubmit={editTarget ? handleEdit : handleAdd}>
             <div className="input-label">身分（教練與管理員可同時勾選）</div>
             <div className="chip-group" style={{ marginBottom:6 }}>
@@ -3445,15 +4087,20 @@ function AMembers({ onSwitch }) {
                 <div key={r} className={"chip"+(form.roles.includes(r)?" sel":"")} onClick={() => toggleRole(r)}>{form.roles.includes(r) ? "✓ " : ""}{l}</div>
               ))}
             </div>
-            <div style={{ fontSize:12, color:"var(--ink-4)", marginBottom:12, fontStyle:"italic" }}>
+            <div style={{ fontSize:fz(14), color:"var(--ink-4)", marginBottom:12 }}>
               {form.roles.length > 1 ? "此帳號登入後可在右上角切換身分" : isStudentForm ? "學員身分無法與教練、管理員同時擁有" : "可再勾選另一個身分"}
             </div>
             <div className="input-label">姓名 *</div>
             <input className="input-field" placeholder="王小明" value={form.name} onChange={e=>setField("name",e.target.value)} />
             {!editTarget && (
               <>
-                <div className="input-label">Email *</div>
-                <input className="input-field" type="email" placeholder="member@email.com" value={form.email} onChange={e=>setField("email",e.target.value)} />
+                <div className="input-label">Email *（登入帳號，建立後無法修改）</div>
+                <input className="input-field" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="member@email.com" value={form.email} onChange={e=>setField("email",e.target.value)} />
+                <div className="input-label">再輸入一次 Email *</div>
+                <input className="input-field" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="避免打錯字" value={form.email2}
+                  onChange={e=>setField("email2",e.target.value)} onPaste={e => e.preventDefault()}
+                  style={form.email2 && form.email2.trim().toLowerCase() !== form.email.trim().toLowerCase() ? { borderColor:"var(--rust)" } : undefined} />
+                {form.email2 && form.email2.trim().toLowerCase() !== form.email.trim().toLowerCase() && <div className="hint" style={{ color:"var(--rust)", marginTop:-4, marginBottom:10 }}>兩次輸入的 Email 不一樣</div>}
                 <div className="input-label">初始密碼 *（至少 6 碼）</div>
                 <input className="input-field" type="text" placeholder="設定後請告知對方" value={form.password} onChange={e=>setField("password",e.target.value)} />
               </>
@@ -3520,8 +4167,8 @@ function AReview({ onSwitch }) {
       {confirmDel && (
         <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.45)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
           <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:320 }}>
-            <div style={{ fontFamily:"var(--font)",fontSize:18,fontWeight:600,marginBottom:10 }}>確認刪除模組</div>
-            <div style={{ fontSize:14,color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除此課程模組嗎？此動作無法復原。</div>
+            <div style={{ fontFamily:"var(--font)",fontSize:fz(20),fontWeight:600,marginBottom:10 }}>確認刪除模組</div>
+            <div style={{ fontSize:fz(16),color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除此課程模組嗎？此動作無法復原。</div>
             <div className="btn-row" style={{ marginTop:0 }}>
               <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
               <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }}
@@ -3535,11 +4182,11 @@ function AReview({ onSwitch }) {
 
       <div className="content">
         {loading ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48 }}>載入中…</div>
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:fz(15),marginTop:48 }}>載入中…</div>
         ) : allModules.length === 0 ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:13,marginTop:48,lineHeight:1.7 }}>
+          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:fz(15),marginTop:48,lineHeight:1.7 }}>
             系統尚無課程模組<br/>
-            <span style={{ fontSize:12,fontStyle:"italic" }}>教練新增課程模組後會出現在此</span>
+            <span style={{ fontSize:fz(14) }}>教練新增課程模組後會出現在此</span>
           </div>
         ) : (
           <>
@@ -3547,13 +4194,13 @@ function AReview({ onSwitch }) {
             <div className="card-glass" style={{ marginBottom:14 }}>
               <div style={{ display:"flex", gap:20 }}>
                 <div>
-                  <div style={{ fontFamily:"var(--font)", fontSize:26, fontWeight:600, color:"var(--gold)" }}>{allModules.length}</div>
-                  <div style={{ fontSize:11, color:"var(--ink-3)", letterSpacing:".06em", textTransform:"uppercase", marginTop:2 }}>課程模組</div>
+                  <div style={{ fontFamily:"var(--font)", fontSize:fz(28), fontWeight:600, color:"var(--gold)" }}>{allModules.length}</div>
+                  <div style={{ fontSize:fz(13), color:"var(--ink-3)", letterSpacing:".02em", textTransform:"uppercase", marginTop:2 }}>課程模組</div>
                 </div>
                 <div style={{ width:1, background:"var(--cream-3)" }} />
                 <div>
-                  <div style={{ fontFamily:"var(--font)", fontSize:26, fontWeight:600, color:"var(--sage)" }}>{coaches.length}</div>
-                  <div style={{ fontSize:11, color:"var(--ink-3)", letterSpacing:".06em", textTransform:"uppercase", marginTop:2 }}>教練人數</div>
+                  <div style={{ fontFamily:"var(--font)", fontSize:fz(28), fontWeight:600, color:"var(--sage)" }}>{coaches.length}</div>
+                  <div style={{ fontSize:fz(13), color:"var(--ink-3)", letterSpacing:".02em", textTransform:"uppercase", marginTop:2 }}>教練人數</div>
                 </div>
               </div>
             </div>
@@ -3568,8 +4215,8 @@ function AReview({ onSwitch }) {
                   {/* 教練標題 */}
                   <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
                     <div style={{ width:10, height:10, borderRadius:"50%", background:color.border }} />
-                    <span style={{ fontFamily:"var(--font)", fontSize:14, fontWeight:600, color:"var(--ink)" }}>{coachName}</span>
-                    <span style={{ fontSize:11, color:"var(--ink-3)", fontStyle:"italic" }}>{mods.length} 個模組</span>
+                    <span style={{ fontFamily:"var(--font)", fontSize:fz(16), fontWeight:600, color:"var(--ink)" }}>{coachName}</span>
+                    <span style={{ fontSize:fz(13), color:"var(--ink-3)" }}>{mods.length} 個模組</span>
                   </div>
                   {/* 模組列表 */}
                   {mods.map(m => (
@@ -3583,17 +4230,17 @@ function AReview({ onSwitch }) {
                         <div style={{ flex:1 }}>
                           <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:5 }}>
                             {(m.stage||[]).map(s => (
-                              <span key={s} className="badge" style={{ background:"rgba(255,255,255,.8)", color:color.border, border:`1px solid ${color.border}`, fontSize:10 }}>{s}</span>
+                              <span key={s} className="badge" style={{ background:"rgba(255,255,255,.8)", color:color.border, border:`1px solid ${color.border}`, fontSize:fz(12) }}>{s}</span>
                             ))}
-                            {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>⏱ {m.duration}</span>}
-                            {(m.method||[]).map(mt => <span key={mt} className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:10 }}>{mt}</span>)}
+                            {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(12) }}>⏱ {m.duration}</span>}
+                            {(m.method||[]).map(mt => <span key={mt} className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(12) }}>{mt}</span>)}
                           </div>
-                          <div style={{ fontFamily:"var(--font)", fontSize:14, fontWeight:600 }}>{m.title}</div>
-                          {m.outline && <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:3, fontStyle:"italic", lineHeight:1.55 }}>{m.outline}</div>}
+                          <div style={{ fontFamily:"var(--font)", fontSize:fz(16), fontWeight:600 }}>{m.title}</div>
+                          {m.outline && <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:3, lineHeight:1.55 }}>{m.outline}</div>}
                         </div>
                         {/* 管理員可刪除任何模組 */}
                         <button className="btn btn-sm"
-                          style={{ padding:"4px 10px", fontSize:11, color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)", marginLeft:10, flexShrink:0 }}
+                          style={{ padding:"4px 10px", fontSize:fz(13), color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)", marginLeft:10, flexShrink:0 }}
                           onClick={() => setConfirmDel(m.id)}>刪除</button>
                       </div>
                     </div>
@@ -3612,7 +4259,7 @@ function AReview({ onSwitch }) {
 
 function ARecords({ onSwitch }) {
   const { fetchRecords, fetchSessions } = useAuth();
-  const [tab,      setTab]      = useState("records");
+  const [tab,      setTab]      = useState("hours");
   const [records,  setRecords]  = useState([]);
   const [sessions, setSessions] = useState([]);
   const [loading,  setLoading]  = useState(true);
@@ -3631,14 +4278,17 @@ function ARecords({ onSwitch }) {
   const counts = countByStatus(future);
   return (
     <div className="screen-enter">
-      <div className="topbar"><div className="topbar-title">所有記錄</div></div>
+      <div className="topbar"><div className="topbar-title">交付與記錄</div></div>
       <div className="inner-tabs" style={{ padding:"0 16px" }}>
+        <button className={"inner-tab"+(tab==="hours"?" active":"")} onClick={() => setTab("hours")}>時數報表</button>
         <button className={"inner-tab"+(tab==="records"?" active":"")} onClick={() => setTab("records")}>上課記錄</button>
         <button className={"inner-tab"+(tab==="sessions"?" active":"")} onClick={() => setTab("sessions")}>全聯盟課表</button>
       </div>
       <div className="content" style={{ paddingTop:12 }}>
         {loading ? (
           <div className="empty">載入中…</div>
+        ) : tab === "hours" ? (
+          <HoursReport sessions={sessions} viewer="admin" onOpen={setSheet} />
         ) : tab === "sessions" ? (
           <>
             <div className="filter-row">
@@ -3658,13 +4308,13 @@ function ARecords({ onSwitch }) {
           <div key={r.id} className="card" style={{ marginBottom:10 }}>
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8 }}>
               <div>
-                <div style={{ fontSize:15,fontWeight:600,fontFamily:"var(--font)" }}>{r.topic}</div>
-                <div style={{ fontSize:12,color:"var(--ink-3)",marginTop:2,fontStyle:"italic" }}>
+                <div style={{ fontSize:fz(17),fontWeight:600,fontFamily:"var(--font)" }}>{r.topic}</div>
+                <div style={{ fontSize:fz(14),color:"var(--ink-3)",marginTop:2 }}>
                   {r.date} · 學員：{r.studentName||"—"} · 教練：{r.coachName||"—"}
                 </div>
               </div>
               <div style={{ display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0,marginLeft:8 }}>
-                {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:10 }}>學員可見</span>}
+                {r.visibleStudent && <span className="badge badge-teal" style={{ fontSize:fz(12) }}>學員可見</span>}
               </div>
             </div>
             {r.feedback && <div className="record-note"><div className="record-note-label" style={{ color:"var(--sage)" }}>給學員的回饋</div>{r.feedback}</div>}
@@ -3675,6 +4325,35 @@ function ARecords({ onSwitch }) {
       {sheet && <SessionSheet s={sheet} viewer="admin" onClose={() => setSheet(null)} onChanged={(m) => { setToast(m); setRefresh(x => x + 1); }} />}
       <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={A_TABS} active="records" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
+/* ── 字級設定（存在這台裝置）── */
+const FS_OPTIONS = [["1", "標準"], ["1.12", "大"], ["1.25", "特大"]];
+const FS_KEY = "istar.fontScale";
+function applyFontScale(v) { document.documentElement.style.setProperty("--fs", v); }
+function TextSizeControl() {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState(() => { try { return localStorage.getItem(FS_KEY) || "1"; } catch { return "1"; } });
+  useEffect(() => { applyFontScale(val); }, [val]);
+  const pick = (v) => { setVal(v); try { localStorage.setItem(FS_KEY, v); } catch {} setOpen(false); };
+  return (
+    <div style={{ position:"relative" }}>
+      <button className="fs-btn" onClick={() => setOpen(o => !o)} aria-label="調整字級" aria-expanded={open}>Aa</button>
+      {open && (
+        <>
+          <div style={{ position:"fixed", inset:0, zIndex:60 }} onClick={() => setOpen(false)} />
+          <div className="fs-menu" role="menu">
+            <div className="role-menu-h">字級大小</div>
+            {FS_OPTIONS.map(([v, l]) => (
+              <button key={v} role="menuitemradio" aria-checked={val === v} className={"fs-opt" + (val === v ? " on" : "")} onClick={() => pick(v)}>
+                <span style={{ fontSize:`calc(16px * ${v})` }}>{l}</span>{val === v && <span>✓</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -3715,11 +4394,11 @@ export default function App() {
 
   const renderCoach = () => {
     switch(cTab) {
-      case "home":    return <CHome    onSwitch={setCTab} />;
+      case "home":    return <CHome    onSwitch={setCTab} onModal={openModal} />;
       case "modules": return <CModules onSwitch={setCTab} onModal={openModal} />;
       case "assign":  return <CSchedule onSwitch={setCTab} onModal={openModal} />;
       case "records": return <CRecords onSwitch={setCTab} onModal={openModal} />;
-      default:        return <CHome    onSwitch={setCTab} />;
+      default:        return <CHome    onSwitch={setCTab} onModal={openModal} />;
     }
   };
 
@@ -3748,7 +4427,7 @@ export default function App() {
     }).catch(() => {});
   }, [profile?.uid, role, sTab, cTab, modal]);
 
-  const ROLE_LABELS = { admin:"ADMIN", coach:"COACH", student:"STUDENT" };
+  const ROLE_LABELS = { admin:"管理員", coach:"教練", student:"學員" };
   const ROLE_CLASS  = { admin:"admin",  coach:"coach",  student:"student" };
 
   if (loading) {
@@ -3756,8 +4435,8 @@ export default function App() {
       <>
         <Starfield />
         <div className="app" style={{ alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontFamily:"var(--font)", fontSize:36, color:"var(--gold)", marginBottom:14 }}>✦</div>
-          <div style={{ fontSize:13, color:"var(--ink-3)", letterSpacing:".06em" }}>載入中…</div>
+          <div style={{ fontFamily:"var(--font)", fontSize:fz(38), color:"var(--gold)", marginBottom:14 }}>✦</div>
+          <div style={{ fontSize:fz(15), color:"var(--ink-3)", letterSpacing:".02em" }}>載入中…</div>
         </div>
       </>
     );
@@ -3773,6 +4452,7 @@ export default function App() {
               <span className="header-logo-mark">✦</span>
               <span className="header-logo-text">iSTAR <span>Alliance</span></span>
             </div>
+            <TextSizeControl />
           </div>
           <LoginScreen />
         </div>
@@ -3832,10 +4512,11 @@ export default function App() {
               </div>
             ) : (
               <span className={"role-badge " + (ROLE_CLASS[role] || "student")}>
-                {ROLE_LABELS[role] || "STUDENT"}
+                {ROLE_LABELS[role] || "學員"}
               </span>
             )}
-            <span style={{ fontSize:13, color:"var(--ink-2)", fontWeight:500 }}>{displayName}</span>
+            <span className="hdr-name">{displayName}</span>
+            <TextSizeControl />
             <button className="logout-btn" onClick={logout}>登出</button>
           </div>
         </div>

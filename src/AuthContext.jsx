@@ -4,6 +4,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import {
   doc, getDoc, setDoc, collection,
@@ -91,13 +92,26 @@ export function AuthProvider({ children }) {
       await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
     } catch (e) {
       const msg = {
-        "auth/invalid-credential": "Email 或密碼錯誤，請再確認。",
-        "auth/user-not-found":     "找不到此帳號。",
+        "auth/invalid-credential": "Email 或密碼不正確。請檢查 Email 的每個字母是否正確（例如多打或少打一個字），或點下方「忘記密碼」。",
+        "auth/user-not-found":     "找不到此帳號，請確認 Email 拼字。",
         "auth/wrong-password":     "密碼錯誤。",
-        "auth/too-many-requests":  "嘗試次數過多，請稍後再試。",
+        "auth/too-many-requests":  "嘗試次數過多，帳號暫時鎖定，請稍後再試或點「忘記密碼」。",
         "auth/invalid-email":      "Email 格式不正確。",
+        "auth/network-request-failed": "網路連線不穩，請檢查網路後再試。",
       };
       setError(msg[e.code] || "登入失敗，請聯絡管理員。");
+    }
+  };
+
+  // 寄送重設密碼信（Firebase 內建，信件寄到該 Email）
+  const resetPassword = async (email) => {
+    try {
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+      return { success: true };
+    } catch (e) {
+      const msg = { "auth/invalid-email": "Email 格式不正確。", "auth/missing-email": "請先輸入 Email。" };
+      // 為了安全，帳號不存在時 Firebase 也會回成功，不透露帳號是否存在
+      return { success: false, error: msg[e.code] || "寄送失敗，請稍後再試。" };
     }
   };
 
@@ -460,6 +474,11 @@ export function AuthProvider({ children }) {
     } catch { return []; }
   };
 
+  const fetchSession = async (id) => {
+    try { const snap = await getDoc(doc(db, "sessions", id)); return snap.exists() ? { id: snap.id, ...snap.data() } : null; }
+    catch { return null; }
+  };
+
   // 學員確認教練排定的時段 → 已排定
   const confirmSession = (id) =>
     updateSession(id, { status: "confirmed", studentNote: "", confirmedAt: serverTimestamp() });
@@ -487,6 +506,59 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e.message === "taken" ? "這個時段剛被預約走了，請選擇其他時段。" : "預約失敗，請再試一次。" };
     }
+  };
+
+  /* ════════════════════════════════════════
+     出席：簽到／上課證明照片／簽退
+     時間用 serverTimestamp()，規則要求 == request.time，無法偽造
+  ════════════════════════════════════════ */
+  const stamp = (extra = {}) => ({
+    at: serverTimestamp(), by: auth.currentUser?.uid || "", byName: profile?.name || "", ...extra,
+  });
+
+  // asRole：學員本人簽到傳 "student"；教練／管理員代簽傳自己的身分
+  const checkInSession = async (id, asRole = role) => {
+    try {
+      await updateDoc(doc(db, "sessions", id), { checkIn: stamp({ role: asRole || "student" }), updatedAt: serverTimestamp() });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const checkOutSession = async (id, summary = "") => {
+    try {
+      await updateDoc(doc(db, "sessions", id), { checkOut: stamp({ summary: summary || "" }), updatedAt: serverTimestamp() });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const photoCol = (id) => collection(db, "sessions", id, "photos");
+
+  const fetchSessionPhotos = async (id) => {
+    try {
+      const snap = await getDocs(photoCol(id));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+    } catch { return []; }
+  };
+
+  // 新增照片後同步更新 photoCount（清單上不用讀照片就知道有沒有證明）
+  const addSessionPhoto = async (id, { data, thumb, name, size }, countAfter) => {
+    try {
+      await addDoc(photoCol(id), {
+        data, thumb, name: name || "", size: size || 0, order: Date.now(),
+        addedBy: profile?.name || "", addedByUid: auth.currentUser?.uid || "", createdAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "sessions", id), { photoCount: countAfter, updatedAt: serverTimestamp() });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  const deleteSessionPhoto = async (id, photoId, countAfter) => {
+    try {
+      await deleteDoc(doc(db, "sessions", id, "photos", photoId));
+      await updateDoc(doc(db, "sessions", id), { photoCount: Math.max(0, countAfter), updatedAt: serverTimestamp() });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
   /* ════════════════════════════════════════
@@ -608,8 +680,10 @@ export function AuthProvider({ children }) {
                  uploadModuleFile, fetchResourceFile, updateModuleResource,
       /* 路徑 */ fetchJourney, fetchJourneys, ensureJourneys, claimMilestone, unclaimMilestone,
                  verifyMilestone, advanceStage, setJourneyStage, setStageNote,
-      /* 排課 */ addSessions, updateSession, deleteSession, fetchSessions,
+      /* 排課 */ addSessions, updateSession, deleteSession, fetchSessions, fetchSession,
                  confirmSession, requestReschedule, bookOpenSession,
+      /* 出席 */ checkInSession, checkOutSession, fetchSessionPhotos, addSessionPhoto, deleteSessionPhoto,
+      /* 帳號 */ resetPassword,
       /* 反饋 */ addFeedback, fetchFeedbacks,
     }}>
       {children}
