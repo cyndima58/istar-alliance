@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth, rolesOf } from "./AuthContext";
+import { pushStatus, enablePush, disablePush, promptDismissed, dismissPrompt, notify } from "./push";
 import {
   SESSION_STATUS, todayStr, addDays, toMinutes, fromMinutes, buildMonthGrid,
   formatDateLabel, relativeDayLabel, weekdayLabel, isPast, sortSessions,
@@ -820,6 +821,9 @@ button, input, select, textarea { font-family: var(--font); }
 .po-card.paid { opacity: .85; }
 .po-amt { font-family: var(--font-display); font-size: calc(28px * var(--fs)); font-weight: 600; margin-top: 6px; }
 .btn.danger { background: var(--rust); color: #fff; border-color: var(--rust); }
+.pw-card { margin-top: 18px; border-left: 3px solid var(--slate); }
+.push-card { background: linear-gradient(150deg, #F2F7FC, #fff); border:1px solid rgba(47,94,138,.25); border-radius: var(--r-xl); padding: 14px 16px; margin-bottom: 12px; }
+.fs-opt:disabled { opacity:.6; cursor: default; }
 .req-row { display:flex; align-items:center; gap:8px; padding: 10px 0; border-top: 1px solid rgba(138,90,16,.15); }
 
 /* 課程模組分組 */
@@ -856,6 +860,17 @@ button, input, select, textarea { font-family: var(--font); }
 .login-brand { margin-bottom: 8px; text-transform: none; letter-spacing: 0; }
 .login-brand .wm-istar { color: var(--ink); font-size: 36px; }
 .login-brand .wm-i, .login-brand .wm-all { color: var(--gold); }
+
+/* 財務異動紀錄 */
+.log-row { display:flex; gap:10px; padding: 12px 0; border-bottom: 1px solid var(--cream-3); align-items:flex-start; }
+.log-row:last-child { border-bottom:none; }
+.log-tag { flex-shrink:0; font-size: calc(13px * var(--fs)); font-weight:700; padding: 3px 9px; border-radius: var(--r-pill); background: var(--cream-2); color: var(--ink-2); }
+.log-tag.create { background:#E3F1E7; color:#2F6B45; }
+.log-tag.update, .log-tag.setting { background:#E6EFF8; color:#2F5E8A; }
+.log-tag.delete { background: var(--rust-pale); color: var(--rust); }
+.log-t { font-size: calc(16px * var(--fs)); font-weight:700; word-break: break-word; }
+.log-s { font-size: calc(14px * var(--fs)); color: var(--ink-2); margin-top: 2px; }
+.log-meta { font-size: calc(13px * var(--fs)); color: var(--ink-3); margin-top: 4px; }
 /* 減少動態效果（系統設定開啟時） */
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 `;
@@ -2349,7 +2364,7 @@ function SessionSheet({ s: initial, viewer, onClose, onChanged, onEdit, onWriteR
             <div className="btn-row" style={{ marginTop:0 }}>
               <button className="btn" onClick={() => setConfirmDel(false)}>返回</button>
               <button className="btn" style={{ background:"var(--rust)", color:"#fff", borderColor:"var(--rust)" }} disabled={busy}
-                onClick={() => run(() => deleteSession(s.id), "時段已移除")}>確認</button>
+                onClick={() => run(() => deleteSession(s.id, s), "時段已移除")}>確認</button>
             </div>
           </div>
         )}
@@ -2438,6 +2453,7 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
       // 時間或學員有變動 → 需要學員重新確認
       else if (editData.status === "open" || changedTime || changedStudent || editData.status === "reschedule") status = "pending";
       res = await updateSession(editData.id, { ...base, date: form.date, status, studentNote: status === "pending" ? "" : (editData.studentNote || "") });
+      if (res.success && status === "pending" && base.studentUid) notify("session_updated", { id: editData.id });
     } else {
       const seriesId = dates.length > 1 ? `s${Date.now()}` : "";
       res = await addSessions(dates.map(d => ({
@@ -2691,6 +2707,8 @@ function SHome({ onSwitch }) {
           <TodayClassCard key={s.id} s={s} onOpen={setSheet}
             onCheckedIn={() => { setToast("簽到成功 ✓"); setRefresh(r => r + 1); }} />
         ))}
+
+        <PushPrompt />
 
         {/* ── 問候卡（升級版：顯示當前成長階段）── */}
         <div className="card-gold" style={{ marginBottom:12 }}>
@@ -3181,6 +3199,8 @@ function CHome({ onSwitch, onModal }) {
             {toFix.slice(0, 4).map(s => <SessionItem key={s.id} s={s} viewer="coach" onOpen={setSheet} showDate />)}
           </div>
         )}
+
+        <PushPrompt />
 
         {/* ── 今日摘要卡 ── */}
         <div className="card-glass" style={{ marginBottom:12 }}>
@@ -4049,6 +4069,8 @@ function AHome({ onSwitch }) {
           </div>
         </div>
 
+        <PushPrompt />
+
         {/* ── 本月課程交付 ── */}
         <button className="card deliver-card" onClick={() => onSwitch("records")}>
           <div className="deliver-h"><span>本月課程交付</span><span className="link-btn">查看報表 →</span></div>
@@ -4208,7 +4230,13 @@ function AMembers({ onSwitch }) {
   const ROLE_NAME = { admin:"管理員", coach:"教練", student:"學員" };
   const isStudentForm = form.roles.includes("student");
 
-  const handleDelete = async uid => { await deleteMember(uid); setConfirmDel(null); setMembers(ms=>ms.filter(m=>m.uid!==uid)); };
+  const handleDelete = async uid => {
+    const name = members.find(m => m.uid === uid)?.name || "";
+    const r = await deleteMember(uid); setConfirmDel(null);
+    if (r.success) { setMembers(ms=>ms.filter(m=>m.uid!==uid)); setResult({ ok:true, msg:`${name} 已從成員名單移除。` }); }
+    else setResult({ ok:false, msg:"刪除失敗，請再試一次。" });
+  };
+
 
   const roleColors = { admin:{bg:"var(--gold-pale)",color:"var(--gold)",border:"var(--gold-line)"}, coach:{bg:"var(--sage-pale)",color:"var(--sage)",border:"rgba(74,123,90,.22)"}, student:{bg:"var(--slate-pale)",color:"var(--slate)",border:"rgba(58,74,107,.18)"} };
   const rc = r => roleColors[r] || roleColors.student;
@@ -4707,7 +4735,7 @@ function StudentPaySheet({ bal, payments, onClose, onAddPay, onChanged }) {
   const saveDue = async () => {
     const v = due === "" ? 0 : parseAmount(due);
     if (Number.isNaN(v)) { setMsg("金額格式不正確"); return; }
-    const r = await setFinanceSetting(`tuition.${bal.uid}`, v);
+    const r = await setFinanceSetting(`tuition.${bal.uid}`, v, bal.name);
     setMsg(r.success ? "應收學費已更新 ✓" : "儲存失敗"); if (r.success) onChanged();
   };
   const del = async (p) => {
@@ -4745,6 +4773,59 @@ function StudentPaySheet({ bal, payments, onClose, onAddPay, onChanged }) {
         <button className="btn" style={{ width:"100%", marginTop:10, border:"none", background:"none" }} onClick={onClose}>關閉</button>
       </div>
     </div>
+  );
+}
+
+/* 財務異動紀錄：誰、什麼時候、改了什麼（只能看，不能改） */
+const FIN_FIELD = { amount:"金額", status:"狀態", date:"日期", method:"方式", note:"備註", item:"項目", category:"類別",
+  period:"月份", coachName:"教練", studentName:"學員", paidAt:"匯款日", hours:"時數", rate:"每小時分潤" };
+const finVal = (k, v) => v == null || v === "" ? "（空）" : k === "amount" || k === "rate" ? fmtMoney(v) : k === "status" ? (v === "paid" ? "已匯款" : "待匯款") : String(v);
+function describeLog(l) {
+  const d = l.after || l.before || {};
+  const who = d.studentName || d.coachName || d.item || "";
+  const head = { create:"新增", update:"修改", delete:"刪除", setting:"設定" }[l.action] || l.action;
+  if (l.action === "setting") {
+    const g = l.setting; const b = (l.before || {})[g], a = (l.after || {})[g];
+    return { title: `${g === "tuition" ? "應收學費" : "每小時分潤"}：${l.target || "—"}`, lines: [`${b == null ? "（未設定）" : fmtMoney(b)} → ${fmtMoney(a)}`], head };
+  }
+  const title = `${l.colLabel}：${who}${d.amount != null && l.action !== "update" ? " " + fmtMoney(d.amount) : ""}`;
+  if (l.action !== "update") {
+    const extra = [d.date || d.period, d.method || d.category, d.status ? finVal("status", d.status) : "", d.note].filter(Boolean).join(" · ");
+    return { title, lines: extra ? [extra] : [], head };
+  }
+  const lines = Object.keys(FIN_FIELD).filter(k => JSON.stringify((l.before || {})[k] ?? null) !== JSON.stringify((l.after || {})[k] ?? null))
+    .map(k => `${FIN_FIELD[k]}：${finVal(k, (l.before || {})[k])} → ${finVal(k, (l.after || {})[k])}`);
+  return { title, lines: lines.length ? lines : ["（內容未變更）"], head };
+}
+function FinanceLogList({ refresh }) {
+  const { fetchFinanceLogs } = useAuth();
+  const [logs, setLogs] = useState(null);
+  const [kind, setKind] = useState("");
+  useEffect(() => { fetchFinanceLogs().then(setLogs); }, [refresh]);
+  if (!logs) return <div className="empty">載入中…</div>;
+  const shown = logs.filter(l => !kind || (kind === "setting" ? l.action === "setting" : l.col === kind));
+  return (
+    <>
+      <div className="hint" style={{ margin:"0 2px 10px" }}>所有收款、分潤、支出與設定的變更都會自動記錄，紀錄無法修改或刪除。顯示最近 300 筆。</div>
+      <div className="filter-row">
+        {[["","全部"],["payments","收款"],["payouts","教練分潤"],["expenses","支出"],["setting","設定"]].map(([k,l]) =>
+          <button key={k} className={"filter-chip" + (kind === k ? " on" : "")} style={{ color: kind === k ? "var(--gold)" : "var(--ink-2)" }} onClick={() => setKind(k)}>{l}</button>)}
+      </div>
+      {shown.length === 0 ? <div className="card empty">還沒有異動紀錄</div> : (
+        <div className="card" style={{ padding:"4px 14px" }}>
+          {shown.map(l => { const d = describeLog(l); return (
+            <div key={l.id} className="log-row">
+              <span className={"log-tag " + l.action}>{d.head}</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div className="log-t">{d.title}</div>
+                {d.lines.map((x, i) => <div key={i} className="log-s">{x}</div>)}
+                <div className="log-meta">{l.byName || "—"} · {fmtDateTime(l.at) || "剛剛"}</div>
+              </div>
+            </div>
+          ); })}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -4790,12 +4871,13 @@ function AFinance({ onSwitch }) {
   const arm = (id, fn) => { if (armed !== id) { setArmed(id); setTimeout(() => setArmed(a => a === id ? "" : a), 3000); return; } setArmed(""); fn(); };
   const markPaid = async (o, paid) => {
     const r = await finUpdate("payouts", o.id, paid ? { status:"paid", paidAt: todayStr() } : { status:"pending", paidAt: "" });
+    if (r.success && paid) notify("payout_paid", { id: o.id });
     reload(r.success ? (paid ? `已標記 ${o.coachName} 已匯款 ✓` : "已改回待匯款") : "更新失敗");
   };
   const saveRate = async (cid) => {
     const v = rates[cid] === "" ? 0 : parseAmount(rates[cid]);
     if (Number.isNaN(v)) return;
-    await setFinanceSetting(`rates.${cid}`, v);
+    await setFinanceSetting(`rates.${cid}`, v, coaches.find(c => c.uid === cid)?.name || "");
   };
   const createFromSug = async (g) => {
     if (!(g.amount > 0)) { setToast("請先填寫每小時分潤"); return; }
@@ -4840,9 +4922,12 @@ function AFinance({ onSwitch }) {
           <button className={"inner-tab" + (tab === "income" ? " active" : "")} onClick={() => setTab("income")}>收款</button>
           <button className={"inner-tab" + (tab === "payout" ? " active" : "")} onClick={() => setTab("payout")}>教練分潤{sum.counts.pending ? <span className="tab-n">{sum.counts.pending}</span> : null}</button>
           <button className={"inner-tab" + (tab === "expense" ? " active" : "")} onClick={() => setTab("expense")}>支出</button>
+          <button className={"inner-tab" + (tab === "log" ? " active" : "")} onClick={() => setTab("log")}>異動紀錄</button>
         </div>
 
-        {loading ? <div className="empty">載入中…</div> : tab === "income" ? (
+        {loading ? <div className="empty">載入中…</div> : tab === "log" ? (
+          <FinanceLogList refresh={refresh} />
+        ) : tab === "income" ? (
           <>
             <button className="btn btn-primary btn-lg" style={{ width:"100%" }} onClick={() => setForm({ kind:"payment" })}>＋ 登記收款</button>
             <div className="sec-h">學員收款狀況<span className="sec-note">未收合計 {fmtMoney(owedTotal)}</span></div>
@@ -4951,18 +5036,77 @@ function AFinance({ onSwitch }) {
   );
 }
 
+/* ── 手機推播通知 ── */
+const PUSH_TEXT = {
+  on: "已開啟", off: "未開啟", denied: "已被瀏覽器封鎖", unsupported: "這台裝置不支援", "ios-install": "需先加入主畫面", "not-ready": "系統尚未啟用",
+};
+function PushPrompt() {
+  const [st,   setSt]   = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg,  setMsg]  = useState("");
+  const [hide, setHide] = useState(promptDismissed());
+  useEffect(() => { pushStatus().then(setSt).catch(() => setSt("unsupported")); }, []);
+  if (hide || !st || st === "on" || st === "unsupported" || st === "denied" || st === "not-ready") return null;
+  const close = () => { dismissPrompt(); setHide(true); };
+  if (st === "ios-install") return (
+    <div className="push-card">
+      <div className="alert-t">🔔 想收到上課與排課通知？</div>
+      <div className="alert-s">iPhone 要先把 App 加入主畫面：在 Safari 按下方「分享」→「加入主畫面」，之後從主畫面的 iSTAR 圖示打開，就能開啟通知。</div>
+      <button className="btn btn-sm" onClick={close}>知道了</button>
+    </div>
+  );
+  const on = async () => {
+    setBusy(true); setMsg("");
+    const r = await enablePush();
+    setBusy(false);
+    if (r.ok) { setSt("on"); return; }
+    setMsg(r.reason === "denied" ? "你拒絕了通知權限，可到手機的瀏覽器設定重新允許。" : r.reason === "dismissed" ? "" : "開啟失敗，請稍後再試。");
+  };
+  return (
+    <div className="push-card">
+      <div className="alert-t">🔔 開啟手機通知</div>
+      <div className="alert-s">排課、上課提醒、簽到、回饋、匯款等消息，會直接跳出通知給你，不用一直打開 App 查看。</div>
+      {msg && <div className="hint" style={{ color:"var(--rust)", marginTop:0, marginBottom:8 }}>{msg}</div>}
+      <div className="btn-row" style={{ marginTop:0 }}>
+        <button className="btn btn-sm" onClick={close}>以後再說</button>
+        <button className="btn btn-sm btn-primary" disabled={busy} onClick={on}>{busy ? "開啟中…" : "開啟通知"}</button>
+      </div>
+    </div>
+  );
+}
+function PushSetting() {
+  const [st, setSt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { pushStatus().then(setSt).catch(() => setSt("unsupported")); }, []);
+  const toggle = async () => {
+    setBusy(true);
+    if (st === "on") await disablePush(); else await enablePush();
+    setSt(await pushStatus()); setBusy(false);
+  };
+  return (
+    <>
+      <div className="role-menu-h" style={{ marginTop:6 }}>手機通知</div>
+      <button className={"fs-opt" + (st === "on" ? " on" : "")} disabled={busy || !st || st === "unsupported" || st === "denied" || st === "ios-install" || st === "not-ready"} onClick={toggle}
+        role="menuitemcheckbox" aria-checked={st === "on"}>
+        <span>{busy ? "處理中…" : st === "on" ? "通知：開啟中" : "開啟通知"}</span>
+        <span className="hint" style={{ margin:0 }}>{st ? (st === "on" ? "按一下關閉" : PUSH_TEXT[st]) : "…"}</span>
+      </button>
+    </>
+  );
+}
+
 /* ── 字級設定（存在這台裝置）── */
 const FS_OPTIONS = [["1", "標準"], ["1.12", "大"], ["1.25", "特大"]];
 const FS_KEY = "istar.fontScale";
 function applyFontScale(v) { document.documentElement.style.setProperty("--fs", v); }
-function TextSizeControl() {
+function TextSizeControl({ showPush }) {
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState(() => { try { return localStorage.getItem(FS_KEY) || "1"; } catch { return "1"; } });
   useEffect(() => { applyFontScale(val); }, [val]);
   const pick = (v) => { setVal(v); try { localStorage.setItem(FS_KEY, v); } catch {} setOpen(false); };
   return (
     <div style={{ position:"relative" }}>
-      <button className="fs-btn" onClick={() => setOpen(o => !o)} aria-label="調整字級" aria-expanded={open}>Aa</button>
+      <button className="fs-btn" onClick={() => setOpen(o => !o)} aria-label={showPush ? "字級與通知設定" : "調整字級"} aria-expanded={open}>Aa</button>
       {open && (
         <>
           <div style={{ position:"fixed", inset:0, zIndex:60 }} onClick={() => setOpen(false)} />
@@ -4973,6 +5117,7 @@ function TextSizeControl() {
                 <span style={{ fontSize:`calc(16px * ${v})` }}>{l}</span>{val === v && <span>✓</span>}
               </button>
             ))}
+            {showPush && <PushSetting />}
           </div>
         </>
       )}
@@ -5140,7 +5285,7 @@ export default function App() {
               </span>
             )}
             <span className="hdr-name">{displayName}</span>
-            <TextSizeControl />
+            <TextSizeControl showPush />
             <button className="logout-btn" onClick={logout}>登出</button>
           </div>
         </div>

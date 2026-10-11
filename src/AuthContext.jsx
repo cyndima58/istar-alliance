@@ -10,10 +10,11 @@ import {
   doc, getDoc, setDoc, collection,
   query, where, getDocs, addDoc,
   updateDoc, deleteDoc, serverTimestamp, deleteField,
-  writeBatch, runTransaction,
+  writeBatch, runTransaction, orderBy, limit,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
-import { normalizeCourse, initialJourney, advanceUpdate, setStageUpdate, mKey } from "./journey";
+import { normalizeCourse, initialJourney, advanceUpdate, setStageUpdate, mKey, stageOf } from "./journey";
+import { notify, rebindPush, unbindPushOnLogout } from "./push";
 import { todayStr } from "./schedule";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
@@ -39,6 +40,18 @@ const getSecondaryAuth = () => {
 const AuthContext = createContext(null);
 
 const ROLE_ORDER = ["admin", "coach", "student"];
+
+/* 需要等伺服器先讀到資料的通知（例如取消課程，伺服器要在刪除前讀到內容）；最多等 4 秒 */
+async function notifyNow(type, payload) {
+  if (typeof window !== "undefined" && window.__ISTAR_NO_PUSH) return;
+  try {
+    const t = await auth.currentUser?.getIdToken(); if (!t) return;
+    await Promise.race([
+      fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` }, body: JSON.stringify({ type, ...payload }) }),
+      new Promise(r => setTimeout(r, 4000)),
+    ]);
+  } catch {}
+}
 const STUDENT_FIELDS = ["courseType", "coachName", "birthdate"];
 
 /* 課程模組排序：手動排序（order）優先，其次依名稱（「第 2 堂」排在「第 10 堂」前面） */
@@ -76,6 +89,7 @@ export function AuthProvider({ children }) {
           setProfile({ uid: u.uid, ...data, courseType: normalizeCourse(data.courseType) });
           setRoles(list);
           setRole(list.includes(saved) ? saved : (list[0] || null));
+          rebindPush();
         } else {
           setProfile(null); setRole(null); setRoles([]);
         }
@@ -126,7 +140,7 @@ export function AuthProvider({ children }) {
   };
 
   /* ── 登出 ── */
-  const logout = () => signOut(auth);
+  const logout = async () => { await unbindPushOnLogout(); return signOut(auth); };
 
   /* ════════════════════════════════════════
      成員管理（管理員）
@@ -201,8 +215,32 @@ export function AuthProvider({ children }) {
     return dirty.length;
   };
 
+  /* 伺服器端管理操作（重設密碼、刪除登入帳號）：需在 Vercel 設定 FIREBASE_SERVICE_ACCOUNT */
+  const ADMIN_ERR = {
+    not_configured: "伺服器金鑰尚未設定，暫時無法使用（請在 Vercel 設定 FIREBASE_SERVICE_ACCOUNT）。",
+    not_admin: "只有管理員可以執行這個操作。", invalid_token: "登入已過期，請重新登入後再試。",
+    weak_password: "密碼至少需要 6 個字元。", user_not_found: "找不到這個成員的登入帳號。",
+    cannot_delete_self: "不能刪除自己的登入帳號。",
+  };
+  const adminAction = async (action, payload) => {
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const r = await fetch("/api/admin-users", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action, ...payload }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.ok) return { success: true, ...j };
+      return { success: false, code: j.error || "http_" + r.status, error: ADMIN_ERR[j.error] || "伺服器暫時無法處理，請稍後再試。" };
+    } catch { return { success: false, code: "network", error: "網路連線失敗，請稍後再試。" }; }
+  };
+  const resetMemberPassword = (uid, password) => adminAction("resetPassword", { uid, password });
+
   const deleteMember = async (uid) => {
-    try { await deleteDoc(doc(db, "users", uid)); return { success: true }; }
+    try {
+      await deleteDoc(doc(db, "users", uid));
+      return { success: true };
+    }
     catch (e) { return { success: false, error: e.message }; }
   };
 
@@ -357,6 +395,7 @@ export function AuthProvider({ children }) {
         });
       }
       await batch.commit();
+      if (rest.visibleStudent) notify("record_new", { id: ref.id });
       return { success: true, id: ref.id };
     } catch (e) { return { success: false, error: e.message }; }
   };
@@ -504,8 +543,10 @@ export function AuthProvider({ children }) {
   const addSessions = async (list) => {
     try {
       const batch = writeBatch(db);
+      const ids = [];
       list.forEach(data => {
         const ref = doc(collection(db, "sessions"));
+        if (data.studentUid && data.status === "pending") ids.push(ref.id);
         batch.set(ref, {
           ...data,
           coachId:   auth.currentUser?.uid || "",
@@ -514,6 +555,7 @@ export function AuthProvider({ children }) {
         });
       });
       await batch.commit();
+      if (ids.length) notify("sessions_new", { ids });
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   };
@@ -523,8 +565,12 @@ export function AuthProvider({ children }) {
     catch (e) { return { success: false, error: e.message }; }
   };
 
-  const deleteSession = async (id) => {
-    try { await deleteDoc(doc(db, "sessions", id)); return { success: true }; }
+  // 取消已安排學員的未來課程：先通知學員（伺服器要在刪除前讀到課程內容），再刪除
+  const deleteSession = async (id, s) => {
+    try {
+      if (s?.studentUid && s.date >= todayStr()) await notifyNow("session_cancelled", { id });
+      await deleteDoc(doc(db, "sessions", id)); return { success: true };
+    }
     catch (e) { return { success: false, error: e.message }; }
   };
 
@@ -546,12 +592,18 @@ export function AuthProvider({ children }) {
   };
 
   // 學員確認教練排定的時段 → 已排定
-  const confirmSession = (id) =>
-    updateSession(id, { status: "confirmed", studentNote: "", confirmedAt: serverTimestamp() });
+  const confirmSession = async (id) => {
+    const r = await updateSession(id, { status: "confirmed", studentNote: "", confirmedAt: serverTimestamp() });
+    if (r.success) notify("session_confirmed", { id });
+    return r;
+  };
 
   // 學員請求改期（附原因）
-  const requestReschedule = (id, note) =>
-    updateSession(id, { status: "reschedule", studentNote: note || "" });
+  const requestReschedule = async (id, note) => {
+    const r = await updateSession(id, { status: "reschedule", studentNote: note || "" });
+    if (r.success) notify("session_reschedule", { id });
+    return r;
+  };
 
   // 學員預約開放時段：用 transaction 防止兩人同時搶到同一時段
   const bookOpenSession = async (id) => {
@@ -568,6 +620,7 @@ export function AuthProvider({ children }) {
           updatedAt:   serverTimestamp(),
         });
       });
+      notify("session_booked", { id });
       return { success: true };
     } catch (e) {
       return { success: false, error: e.message === "taken" ? "這個時段剛被預約走了，請選擇其他時段。" : "預約失敗，請再試一次。" };
@@ -586,6 +639,7 @@ export function AuthProvider({ children }) {
   const checkInSession = async (id, asRole = role) => {
     try {
       await updateDoc(doc(db, "sessions", id), { checkIn: stamp({ role: asRole || "student" }), updatedAt: serverTimestamp() });
+      if ((asRole || "student") === "student") notify("checkin", { id });
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   };
@@ -593,6 +647,7 @@ export function AuthProvider({ children }) {
   const checkOutSession = async (id, summary = "") => {
     try {
       await updateDoc(doc(db, "sessions", id), { checkOut: stamp({ summary: summary || "" }), updatedAt: serverTimestamp() });
+      notify("checkout", { id });
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   };
@@ -640,28 +695,73 @@ export function AuthProvider({ children }) {
     return { payments: payments.sort(byDate), payouts: payouts.sort(byDate), expenses: expenses.sort(byDate),
              settings: { tuition: settings.tuition || {}, rates: settings.rates || {} } };
   };
+  /*
+   * 財務異動紀錄：每次新增／修改／刪除都和異動紀錄放在同一個批次寫入，
+   * 要嘛兩筆都成功、要嘛都不寫，不會有「改了金額卻沒留紀錄」的情況。
+   * financeLogs 只能新增，任何人（包含管理員）都不能修改或刪除。
+   */
+  const FIN_LABEL = { payments: "收款", payouts: "教練分潤", expenses: "支出", finance: "財務設定" };
+  const pick = (o) => o ? Object.fromEntries(Object.entries(o).filter(([k]) => !["createdAt", "updatedAt", "createdBy", "createdByUid"].includes(k))) : null;
+  const logRef = () => doc(collection(db, "financeLogs"));
+  const logData = (action, col, docId, before, after, extra = {}) => ({
+    action, col, colLabel: FIN_LABEL[col] || col, docId,
+    before: pick(before), after: pick(after), ...extra,
+    byUid: auth.currentUser?.uid || "", byName: profile?.name || "", at: serverTimestamp(),
+  });
+
   const finAdd = async (col, data) => {
     try {
-      const ref = await addDoc(collection(db, col), { ...data, createdBy: profile?.name || "", createdByUid: auth.currentUser?.uid || "", createdAt: serverTimestamp() });
+      const ref = doc(collection(db, col));
+      const batch = writeBatch(db);
+      batch.set(ref, { ...data, createdBy: profile?.name || "", createdByUid: auth.currentUser?.uid || "", createdAt: serverTimestamp() });
+      batch.set(logRef(), logData("create", col, ref.id, null, data));
+      await batch.commit();
       return { success: true, id: ref.id };
     } catch (e) { return { success: false, error: e.message }; }
   };
   const finUpdate = async (col, id, data) => {
-    try { await updateDoc(doc(db, col, id), { ...data, updatedAt: serverTimestamp() }); return { success: true }; }
-    catch (e) { return { success: false, error: e.message }; }
+    try {
+      const ref = doc(db, col, id);
+      const snap = await getDoc(ref);
+      const before = snap.exists() ? snap.data() : null;
+      const batch = writeBatch(db);
+      batch.update(ref, { ...data, updatedAt: serverTimestamp() });
+      batch.set(logRef(), logData("update", col, id, before, { ...(before || {}), ...data }));
+      await batch.commit();
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
   };
   const finDelete = async (col, id) => {
-    try { await deleteDoc(doc(db, col, id)); return { success: true }; }
-    catch (e) { return { success: false, error: e.message }; }
+    try {
+      const ref = doc(db, col, id);
+      const snap = await getDoc(ref);
+      const batch = writeBatch(db);
+      batch.delete(ref);
+      batch.set(logRef(), logData("delete", col, id, snap.exists() ? snap.data() : null, null));
+      await batch.commit();
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
   };
-  // 應收學費、教練每小時分潤：key 例如 "tuition.uid123"
-  const setFinanceSetting = async (path, value) => {
+  // 應收學費、教練每小時分潤：key 例如 "tuition.uid123"；label 是給紀錄看的對象名稱
+  const setFinanceSetting = async (path, value, label = "") => {
     try {
       const ref = doc(db, "finance", "settings");
       const [group, key] = path.split(".");
-      await setDoc(ref, { [group]: { [key]: value }, updatedAt: serverTimestamp() }, { merge: true });
+      const snap = await getDoc(ref);
+      const old = snap.exists() ? (snap.data()[group] || {})[key] : undefined;
+      if (old === value) return { success: true, unchanged: true };
+      const batch = writeBatch(db);
+      batch.set(ref, { [group]: { [key]: value }, updatedAt: serverTimestamp() }, { merge: true });
+      batch.set(logRef(), logData("setting", "finance", path, { [group]: old ?? null }, { [group]: value }, { setting: group, target: label }));
+      await batch.commit();
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
+  };
+  const fetchFinanceLogs = async (max = 300) => {
+    try {
+      const snap = await getDocs(query(collection(db, "financeLogs"), orderBy("at", "desc"), limit(max)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch { return []; }
   };
 
   /* ════════════════════════════════════════
@@ -675,6 +775,7 @@ export function AuthProvider({ children }) {
     try {
       const u = auth.currentUser;
       await setDoc(doc(db, "accessRequests", u.uid), { uid: u.uid, email: (u.email || "").toLowerCase(), name: name.trim(), note: note.trim(), createdAt: serverTimestamp() });
+      notify("access_request");
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   };
@@ -781,6 +882,7 @@ export function AuthProvider({ children }) {
         [`claims.${mKey(n, i)}`]: { note: note || "", link: link || "", at: todayStr() },
         updatedAt: serverTimestamp(),
       });
+      notify("milestone_claim", { studentUid: auth.currentUser.uid, text: stageOf(n).milestones[i] || "" });
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   };
@@ -799,6 +901,7 @@ export function AuthProvider({ children }) {
         [`verified.${mKey(n, i)}`]: ok ? { by: profile?.name || "", at: todayStr() } : deleteField(),
         updatedAt: serverTimestamp(),
       });
+      if (ok) notify("milestone_verified", { studentUid: uid, text: stageOf(n).milestones[i] || "" });
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   };
@@ -834,7 +937,7 @@ export function AuthProvider({ children }) {
                  confirmSession, requestReschedule, bookOpenSession,
       /* 出席 */ checkInSession, checkOutSession, fetchSessionPhotos, addSessionPhoto, deleteSessionPhoto,
       /* 帳號 */ resetPassword, myRequest, requestAccess, fetchAccessRequests, approveAccess, rejectAccess, refreshProfile,
-      /* 財務 */ fetchFinance, finAdd, finUpdate, finDelete, setFinanceSetting,
+      /* 財務 */ fetchFinance, finAdd, finUpdate, finDelete, setFinanceSetting, fetchFinanceLogs,
       /* 反饋 */ addFeedback, fetchFeedbacks,
     }}>
       {children}

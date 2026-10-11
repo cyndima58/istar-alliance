@@ -133,6 +133,26 @@ service cloud.firestore {
     match /expenses/{id} { allow read, write: if isAdmin(); }
     match /finance/{id}  { allow read, write: if isAdmin(); }
 
+    // ── 財務異動紀錄：只能新增（必須是本人、伺服器時間），任何人都不能修改或刪除 ──
+    match /financeLogs/{id} {
+      allow read:   if isAdmin();
+      allow create: if isAdmin() && request.resource.data.byUid == me() && request.resource.data.at == request.time;
+      allow update, delete: if false;
+    }
+
+    // ── 推播裝置：每人只能登記／移除自己的裝置；App 端無法讀取（只有伺服器發通知時讀）──
+    match /pushTokens/{token} {
+      allow create, update: if signedIn() && request.resource.data.uid == me() && request.resource.data.token == token;
+      allow delete: if signedIn() && resource.data.uid == me();
+      allow read: if false;
+    }
+
+    // ── 管理操作紀錄（重設密碼、刪除登入帳號）：由伺服器寫入，管理員只能讀 ──
+    match /adminLogs/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // ── 開通申請：有登入帳號但還沒有成員資料的人，只能替自己送出申請 ──
     match /accessRequests/{uid} {
       allow read:   if signedIn() && (me() == uid || isAdmin());
