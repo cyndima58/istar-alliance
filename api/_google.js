@@ -9,9 +9,25 @@ export const DEFAULT_API_KEY = "AIzaSyAr_FH3cyWmcHFW4icnhzUd1TaPC9gERaI";
 const SCOPES = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging";
 
 /* 解析金鑰 JSON：容許外層多包引號、或複製時字串裡的換行被變成真的換行 */
+/* 從字串開頭取出第一個完整的 {...}（處理「貼了兩次」的情況） */
+function firstObject(t) {
+  let depth = 0, inStr = false, esc = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true; else if (ch === "{") depth++; else if (ch === "}" && --depth === 0) return t.slice(0, i + 1);
+  }
+  return t;
+}
+export function keyDiagnostics(raw) {
+  const t = String(raw || "").trim();
+  return { smartQuotes: /[\u201C\u201D\u2018\u2019]/.test(t), objects: (t.match(/"type"\s*:\s*"service_account"/g) || []).length, pemKeys: (t.match(/BEGIN PRIVATE KEY/g) || []).length };
+}
 export function parseServiceAccount(raw) {
-  let t = String(raw || "").trim().replace(/^\uFEFF/, "");
-  if (/^['"]/.test(t) && /['"]$/.test(t)) t = t.slice(1, -1);
+  let t = String(raw || "").trim().replace(/^\uFEFF/, "").replace(/[\u201C\u201D]/g, '"');
+  if (/^['"]/.test(t) && /['"]$/.test(t) && !/^\{/.test(t)) t = t.slice(1, -1);
+  try { return JSON.parse(t); } catch {}
+  t = firstObject(t);
   try { return JSON.parse(t); } catch {}
   // 把字串內的真實換行改回 \n（字串外的換行保留）
   let out = "", inStr = false, esc = false;
@@ -34,7 +50,7 @@ export function serviceAccountStatus(env = process.env) {
     return { ok: false, reason: "missing", similarNames: near };
   }
   let sa;
-  try { sa = parseServiceAccount(raw); } catch { const t = raw.trim(); return { ok: false, reason: "invalid_json", length: t.length, startsWith: t.slice(0, 1), endsWith: t.slice(-1) }; }
+  try { sa = parseServiceAccount(raw); } catch { const t = raw.trim(); return { ok: false, reason: "invalid_json", length: t.length, startsWith: t.slice(0, 1), endsWith: t.slice(-1), ...keyDiagnostics(raw) }; }
   const missing = ["project_id", "client_email", "private_key"].filter(k => !sa[k]);
   if (missing.length) return { ok: false, reason: "missing_fields", missing };
   return { ok: true, project: sa.project_id };
