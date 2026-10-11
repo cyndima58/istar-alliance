@@ -127,6 +127,22 @@ service cloud.firestore {
                     || (signedIn() && me() == studentUid && onlyChanges(['claims', 'updatedAt']));
     }
 
+    // ── 財務：收款、教練分潤、支出、設定（應收學費／分潤費率）只有管理員能看與修改 ──
+    match /payments/{id} { allow read, write: if isAdmin(); }
+    match /payouts/{id}  { allow read, write: if isAdmin(); }
+    match /expenses/{id} { allow read, write: if isAdmin(); }
+    match /finance/{id}  { allow read, write: if isAdmin(); }
+
+    // ── 開通申請：有登入帳號但還沒有成員資料的人，只能替自己送出申請 ──
+    match /accessRequests/{uid} {
+      allow read:   if signedIn() && (me() == uid || isAdmin());
+      allow create, update: if signedIn() && me() == uid
+                            && request.resource.data.uid == uid
+                            && request.resource.data.email == request.auth.token.email.lower()
+                            && request.resource.data.name is string && request.resource.data.name.size() <= 50;
+      allow delete: if isAdmin();
+    }
+
     // ── 學員反饋 ──
     match /feedbacks/{feedbackId} {
       allow read:   if isCoachOrAdmin() || (signedIn() && resource.data.studentUid == me());

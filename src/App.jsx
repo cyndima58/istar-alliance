@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useAuth } from "./AuthContext";
+import { useAuth, rolesOf } from "./AuthContext";
 import {
   SESSION_STATUS, todayStr, addDays, toMinutes, fromMinutes, buildMonthGrid,
   formatDateLabel, relativeDayLabel, weekdayLabel, isPast, sortSessions,
@@ -16,6 +16,10 @@ import {
   scheduledMinutes, deliveredMinutes, isShort, formatMinutes, toHours, inRange, monthRange, monthOptions,
   summarize, totals, deliveredList, sessionsCsv,
 } from "./attendance";
+import {
+  PAY_METHODS, EXPENSE_CATS, parseAmount, fmtMoney, inPeriod, financeSummary, studentBalances,
+  payoutSuggestions, financeCsv, periodOptions,
+} from "./finance";
 
 // 字級：依使用者設定的倍率縮放（--fs）
 const fz = (px) => `calc(${px}px * var(--fs))`;
@@ -781,6 +785,42 @@ button, input, select, textarea { font-family: var(--font); }
 .header-right { flex-shrink: 1; justify-content: flex-end; }
 .role-badge, .logout-btn, .fs-btn { white-space: nowrap; flex-shrink: 0; }
 .role-badge { letter-spacing: .02em; text-transform: none; font-weight: 700; }
+
+/* 財務 */
+.fund-card { background: linear-gradient(150deg, #F4F9F5, #FFFFFF); border: 1px solid rgba(63,110,78,.25); border-radius: var(--r-xl); padding: 18px; margin-bottom: 12px; }
+.fund-k { font-size: calc(15px * var(--fs)); font-weight: 700; color: var(--ink-2); }
+.fund-v { font-family: var(--font-display); font-size: calc(38px * var(--fs)); font-weight: 600; margin: 4px 0 10px; line-height: 1.1; }
+.fund-lines > div { display:flex; justify-content:space-between; padding: 6px 0; font-size: calc(16px * var(--fs)); border-bottom: 1px dashed var(--cream-4); }
+.fund-lines > div span { color: var(--ink-2); }
+.fund-lines > div.sub { padding-left: 16px; font-size: calc(14px * var(--fs)); }
+.fund-lines > div.eq { border-bottom: none; font-weight: 700; padding-top: 8px; }
+.tab-n { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; border-radius:10px; background:#8A5A10; color:#fff; font-size: calc(12px * var(--fs)); margin-left: 6px; padding: 0 5px; }
+.sec-note { font-size: calc(14px * var(--fs)); font-weight: 600; color: var(--ink-3); }
+.fin-row { display:flex; align-items:center; gap:8px; }
+.fin-row:not(.card) { padding: 10px 0; border-bottom: 1px solid var(--cream-3); }
+.fin-t { font-size: calc(16px * var(--fs)); font-weight: 700; display:flex; flex-wrap:wrap; gap: 4px 10px; align-items: baseline; }
+.fin-s { font-size: calc(14px * var(--fs)); color: var(--ink-3); margin-top: 2px; }
+.fin-amt { font-size: calc(16px * var(--fs)); white-space: nowrap; }
+.fin-amt.in { color: var(--sage); } .fin-amt.out { color: var(--rust); }
+.fin-owed { text-align:right; flex-shrink:0; font-weight:700; color: var(--rust); font-size: calc(16px * var(--fs)); }
+.fin-owed span { display:block; font-size: calc(12px * var(--fs)); color: var(--ink-3); font-weight:600; }
+.fin-owed span.ok { color: var(--sage); font-size: calc(14px * var(--fs)); }
+.fin-bal { display:grid; grid-template-columns: repeat(3,1fr); gap:6px; background:#fff; border:1px solid var(--cream-3); border-radius: var(--r-lg); padding: 12px; margin-bottom: 14px; }
+.fin-bal span { display:block; font-size: calc(13px * var(--fs)); color: var(--ink-3); }
+.fin-bal b { font-size: calc(16px * var(--fs)); }
+.money-wrap { position: relative; }
+.money-wrap span { position:absolute; left:14px; top:13px; color: var(--ink-3); font-weight:600; font-size: calc(16px * var(--fs)); pointer-events:none; }
+.money-wrap .input-field { padding-left: 58px; font-weight: 700; }
+.sug-row { display:flex; align-items:center; gap:10px; padding: 12px 0; border-top: 1px solid var(--cream-3); flex-wrap: wrap; }
+.sug-rate { width: 104px; }
+.sug-rate span { font-size: calc(12px * var(--fs)); color: var(--ink-3); }
+.sug-rate .input-field { margin: 2px 0 0; min-height: 40px; padding: 6px 10px; }
+.sug-act { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px; min-width: 96px; }
+.sug-act b { font-size: calc(17px * var(--fs)); }
+.po-card.paid { opacity: .85; }
+.po-amt { font-family: var(--font-display); font-size: calc(28px * var(--fs)); font-weight: 600; margin-top: 6px; }
+.btn.danger { background: var(--rust); color: #fff; border-color: var(--rust); }
+.req-row { display:flex; align-items:center; gap:8px; padding: 10px 0; border-top: 1px solid rgba(138,90,16,.15); }
 /* 減少動態效果（系統設定開啟時） */
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 `;
@@ -887,6 +927,7 @@ const IcLock  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none
 const IcLink  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>;
 const IcFile  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 const IcImg   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
+const IcCoin = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6.5v11"/></svg>;
 const IcCal   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
 const IcCheck = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>;
 const IcPlus  = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
@@ -3791,14 +3832,52 @@ function LoginScreen() {
 }
 
 function NoAccessScreen({ user, logout }) {
+  const { myRequest, requestAccess, refreshProfile } = useAuth();
+  const [req,   setReq]   = useState(undefined);   // undefined 載入中 | null 尚未申請 | {...}
+  const [name,  setName]  = useState("");
+  const [note,  setNote]  = useState("");
+  const [busy,  setBusy]  = useState(false);
+  const [msg,   setMsg]   = useState("");
+  useEffect(() => { myRequest().then(setReq); }, []);
+  const send = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) { setMsg("請輸入你的姓名"); return; }
+    setBusy(true); setMsg("");
+    const r = await requestAccess(name, note);
+    setBusy(false);
+    if (r.success) setReq({ name, note }); else setMsg("送出失敗，請稍後再試。");
+  };
+  const check = async () => {
+    setBusy(true); const ok = await refreshProfile(); setBusy(false);
+    if (!ok) setMsg("還沒開通，請等管理員處理後再試一次。");
+  };
   return (
-    <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32 }}>
-      <div style={{ fontFamily:"var(--font)", fontSize:fz(42), color:"var(--gold)", marginBottom:14 }}>✦</div>
-      <div style={{ fontFamily:"var(--font)", fontSize:fz(22), fontWeight:600, color:"var(--gold)", marginBottom:10 }}>尚未取得存取權限</div>
-      <div style={{ fontSize:fz(15), color:"var(--ink-3)", textAlign:"center", lineHeight:1.75, marginBottom:28 }}>
-        帳號（{user?.email}）<br />尚未被加入星辰聯盟系統。<br />請聯絡管理員開通您的權限。
+    <div className="content" style={{ display:"flex", flexDirection:"column", alignItems:"center", paddingTop:36 }}>
+      <div style={{ fontFamily:"var(--font-display)", fontSize:fz(42), color:"var(--gold)", marginBottom:10 }}>✦</div>
+      <div style={{ fontSize:fz(22), fontWeight:700, marginBottom:8 }}>帳號尚未開通</div>
+      <div style={{ fontSize:fz(15), color:"var(--ink-3)", textAlign:"center", lineHeight:1.7, marginBottom:20 }}>
+        你已成功登入 <b style={{ color:"var(--ink)" }}>{user?.email}</b><br />但這個帳號還沒有加入星辰聯盟的成員名單。
       </div>
-      <button className="btn" onClick={logout}>登出</button>
+      <div className="card" style={{ width:"100%" }}>
+        {req === undefined ? <div className="empty">載入中…</div> : req ? (
+          <>
+            <div style={{ fontSize:fz(17), fontWeight:700, color:"var(--sage)" }}>✓ 已送出開通申請</div>
+            <div className="hint">申請人：{req.name}。管理員在「成員」頁開通後，按下方按鈕即可進入，不用重新登入。</div>
+            <button className="btn btn-primary btn-lg" style={{ width:"100%", marginTop:14 }} onClick={check} disabled={busy}>{busy ? "檢查中…" : "我已被開通，進入 App"}</button>
+          </>
+        ) : (
+          <form onSubmit={send}>
+            <div style={{ fontSize:fz(17), fontWeight:700, marginBottom:10 }}>申請開通</div>
+            <label className="input-label" htmlFor="req-name">你的姓名 *</label>
+            <input id="req-name" className="input-field" value={name} maxLength={50} onChange={e => setName(e.target.value)} placeholder="王小明" />
+            <label className="input-label" htmlFor="req-note">備註（選填）</label>
+            <input id="req-note" className="input-field" value={note} maxLength={100} onChange={e => setNote(e.target.value)} placeholder="例：個人賦能班學員、王老師介紹" />
+            <button type="submit" className="btn btn-primary btn-lg" style={{ width:"100%" }} disabled={busy}>{busy ? "送出中…" : "送出開通申請"}</button>
+          </form>
+        )}
+        {msg && <div className="login-error" style={{ marginTop:12 }}>{msg}</div>}
+      </div>
+      <button className="btn" style={{ marginTop:18 }} onClick={logout}>登出，換另一個帳號</button>
     </div>
   );
 }
@@ -3821,6 +3900,7 @@ const A_TABS = [
   { key:"members", label:"成員",   Icon:IcUsers },
   { key:"review",  label:"課程管理", Icon:IcLayer },
   { key:"records", label:"交付記錄", Icon:IcDoc  },
+  { key:"finance", label:"財務",     Icon:IcCoin },
 ];
 
 function AHome({ onSwitch }) {
@@ -3957,8 +4037,10 @@ function AHome({ onSwitch }) {
 
 function AMembers({ onSwitch }) {
   // 與 CMembers 相同邏輯，管理員版
-  const { addMember, fetchMembers, updateMember, deleteMember, profile } = useAuth();
+  const { addMember, fetchMembers, updateMember, deleteMember, profile, fetchAccessRequests, approveAccess, rejectAccess } = useAuth();
   const [members,    setMembers]    = useState([]);
+  const [requests,   setRequests]   = useState([]);
+  const [approving,  setApproving]  = useState(null);   // 正在開通的申請
   const [tab,        setTab]        = useState("list");
   const [loading,    setLoading]    = useState(false);
   const [result,     setResult]     = useState(null);
@@ -3968,7 +4050,21 @@ function AMembers({ onSwitch }) {
   const blankForm = { name:"",email:"",email2:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:todayStr(),roles:["student"] };
   const [form, setForm] = useState(blankForm);
 
-  const loadMembers = () => fetchMembers().then(setMembers).catch(() => {});
+  const loadMembers = () => {
+    fetchMembers().then(setMembers).catch(() => {});
+    fetchAccessRequests().then(rs => setRequests(rs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)))).catch(() => {});
+  };
+  const startApprove = (r) => { setApproving(r); setEditTarget(null); setForm({ ...blankForm, name: r.name || "", roles:["student"] }); setTab("add"); setResult(null); };
+  const handleApprove = async e => {
+    e.preventDefault();
+    if (!form.name) { setResult({ok:false,msg:"姓名為必填。"}); return; }
+    setLoading(true); setResult(null);
+    const res = await approveAccess(approving, form);
+    setLoading(false);
+    if (res.success) { setResult({ ok:true, msg:`${form.name}（${approving.email}）已開通！請通知對方按「我已被開通，進入 App」。` }); setApproving(null); setTab("list"); loadMembers(); }
+    else setResult({ ok:false, msg:"開通失敗，請再試一次。" });
+  };
+  const handleReject = async (r) => { await rejectAccess(r.id); loadMembers(); };
   useEffect(() => { if(tab==="list") loadMembers(); }, [tab]);
 
   const setField = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -3986,7 +4082,7 @@ function AMembers({ onSwitch }) {
       setResult({ ok:true, msg:`${form.name} 已成功新增！`, cred:{ email: form.email.trim().toLowerCase(), password: form.password } });
       setForm({...blankForm,roles:form.roles});
     }
-    else setResult({ok:false,msg:res.error === "此 Email 已被使用。" ? "此 Email 已有登入帳號（可能之前刪除過成員，但登入帳號還在 Firebase）。請改用其他 Email，或請系統管理者到 Firebase Authentication 刪除舊帳號。" : res.error});
+    else setResult({ok:false,msg:res.error === "此 Email 已被使用。" ? "此 Email 已經有登入帳號了。請對方直接用原本的密碼登入並按「送出開通申請」，你再到成員頁的「等待開通」按開通即可。" : res.error});
   };
 
   const startEdit = m => { setEditTarget(m); setForm({name:m.name||"",email:m.email||"",password:"",birthdate:m.birthdate||"",coachName:m.coachName||"",courseType:m.courseType||"個人賦能班",joinDate:m.joinDate||"",roles:(m.roles && m.roles.length ? m.roles : [m.role||"student"])}); setTab("add"); setResult(null); };
@@ -4033,12 +4129,29 @@ function AMembers({ onSwitch }) {
       )}
       <div className="topbar">
         <div className="topbar-title">成員管理</div>
-        <button className={tab==="add"?"btn btn-primary btn-sm":"btn btn-sm"} onClick={() => { if(tab==="add"){setTab("list");setEditTarget(null);setResult(null);}else{setForm(blankForm);setEditTarget(null);setTab("add");setResult(null);} }}>
+        <button className={tab==="add"?"btn btn-primary btn-sm":"btn btn-sm"} onClick={() => { if(tab==="add"){setTab("list");setEditTarget(null);setApproving(null);setResult(null);}else{setForm(blankForm);setEditTarget(null);setApproving(null);setTab("add");setResult(null);} }}>
           {tab==="add" ? "← 返回" : "+ 新增成員"}
         </button>
       </div>
       {tab==="list" ? (
         <div className="content">
+          {result?.ok && <div className="login-ok">{result.msg}</div>}
+          {requests.length > 0 && (
+            <div className="alert-card" style={{ background:"#FCEFD2", borderColor:"rgba(138,90,16,.25)" }}>
+              <div className="alert-t" style={{ color:"#8A5A10" }}>{requests.length} 個帳號等待開通</div>
+              <div className="alert-s">對方已登入但還沒有成員資料，選好身分即可開通</div>
+              {requests.map(r => (
+                <div key={r.id} className="req-row">
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div className="hr-name">{r.name || "（未填姓名）"}</div>
+                    <div className="hr-sub" style={{ wordBreak:"break-all" }}>{r.email}{r.note ? ` · ${r.note}` : ""}</div>
+                  </div>
+                  <button className="btn btn-sm btn-primary" onClick={() => startApprove(r)}>開通</button>
+                  <button className="btn btn-sm" onClick={() => handleReject(r)}>略過</button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="sec-h">所有成員（{members.length} 人）</div>
           {members.length===0 && <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:fz(15),marginTop:36,lineHeight:1.7 }}>還沒有成員<br/><span style={{ fontSize:fz(14) }}>點右上角「+ 新增成員」</span></div>}
           {members.map(m => {
@@ -4080,7 +4193,8 @@ function AMembers({ onSwitch }) {
             )}
           </div>}
           {editTarget && <div style={{ padding:"7px 12px",background:"var(--slate-pale)",borderRadius:"var(--r)",marginBottom:14,fontSize:fz(15),color:"var(--slate)",border:"1px solid rgba(58,74,107,.18)" }}>✏ 編輯：{editTarget.name}</div>}
-          <form onSubmit={editTarget ? handleEdit : handleAdd}>
+          {approving && <div style={{ padding:"10px 12px",background:"#FCEFD2",borderRadius:"var(--r)",marginBottom:14,fontSize:fz(15),color:"#8A5A10",border:"1px solid rgba(138,90,16,.25)",wordBreak:"break-all" }}>開通帳號：<b>{approving.email}</b><br/>登入帳號與密碼沿用對方原本的，不需要再設定。</div>}
+          <form onSubmit={approving ? handleApprove : editTarget ? handleEdit : handleAdd}>
             <div className="input-label">身分（教練與管理員可同時勾選）</div>
             <div className="chip-group" style={{ marginBottom:6 }}>
               {[["student","✦ 學員"],["coach","🎓 教練"],["admin","⚙ 管理員"]].map(([r,l]) => (
@@ -4092,7 +4206,7 @@ function AMembers({ onSwitch }) {
             </div>
             <div className="input-label">姓名 *</div>
             <input className="input-field" placeholder="王小明" value={form.name} onChange={e=>setField("name",e.target.value)} />
-            {!editTarget && (
+            {!editTarget && !approving && (
               <>
                 <div className="input-label">Email *（登入帳號，建立後無法修改）</div>
                 <input className="input-field" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="member@email.com" value={form.email} onChange={e=>setField("email",e.target.value)} />
@@ -4120,7 +4234,7 @@ function AMembers({ onSwitch }) {
               </>
             )}
             <button type="submit" className="btn btn-primary" style={{ width:"100%",justifyContent:"center",marginTop:4 }} disabled={loading}>
-              {loading ? "處理中…" : editTarget ? "✦ 儲存變更" : `✦ 確認新增${form.roles.map(r => ROLE_NAME[r]).join("＋")}`}
+              {loading ? "處理中…" : approving ? `✦ 開通為${form.roles.map(r => ROLE_NAME[r]).join("＋")}` : editTarget ? "✦ 儲存變更" : `✦ 確認新增${form.roles.map(r => ROLE_NAME[r]).join("＋")}`}
             </button>
           </form>
         </div>
@@ -4329,6 +4443,373 @@ function ARecords({ onSwitch }) {
   );
 }
 
+/* ════════════════════════════════════════
+   財務管理（管理員）
+   公積金 = 已收金額 − 教練分潤 − 其他支出
+════════════════════════════════════════ */
+
+function MoneyInput({ value, onChange, id, placeholder = "0" }) {
+  return (
+    <div className="money-wrap">
+      <span>NT$</span>
+      <input id={id} className="input-field" inputMode="numeric" placeholder={placeholder} value={value}
+        onChange={e => onChange(e.target.value.replace(/[^\d,]/g, ""))} />
+    </div>
+  );
+}
+
+/* 新增／編輯：收款、分潤、支出 共用 */
+function FinFormSheet({ kind, init, students, coaches, onClose, onSaved }) {
+  const { finAdd, finUpdate } = useAuth();
+  const isEdit = !!init?.id;
+  const [f, setF] = useState(() => ({
+    studentUid: "", coachId: "", item: "", category: "其他", method: "匯款", note: "", status: "pending",
+    date: todayStr(), period: todayStr().slice(0, 7), ...init, amount: init?.amount != null ? String(init.amount) : "",
+  }));
+  const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const title = { payment: "登記收款", payout: "教練分潤", expense: "新增支出" }[kind];
+  const save = async () => {
+    const amount = parseAmount(f.amount);
+    if (!(amount > 0)) { setErr("請輸入正確的金額"); return; }
+    let data;
+    if (kind === "payment") {
+      const st = students.find(x => x.uid === f.studentUid);
+      if (!st) { setErr("請選擇學員"); return; }
+      if (!f.date) { setErr("請選擇收款日期"); return; }
+      data = { studentUid: st.uid, studentName: st.name, amount, date: f.date, method: f.method, note: f.note.trim() };
+    } else if (kind === "payout") {
+      const c = coaches.find(x => x.uid === f.coachId);
+      if (!c) { setErr("請選擇教練"); return; }
+      if (!f.period) { setErr("請選擇分潤月份"); return; }
+      data = { coachId: c.uid, coachName: c.name, amount, period: f.period, date: f.period + "-01", note: f.note.trim(),
+               status: f.status || "pending", hours: f.hours ?? null, rate: f.rate ?? null };
+    } else {
+      if (!f.item.trim()) { setErr("請填寫支出項目"); return; }
+      if (!f.date) { setErr("請選擇日期"); return; }
+      data = { item: f.item.trim(), category: f.category, amount, date: f.date, note: f.note.trim() };
+    }
+    setBusy(true); setErr("");
+    const col = { payment: "payments", payout: "payouts", expense: "expenses" }[kind];
+    const r = isEdit ? await finUpdate(col, init.id, data) : await finAdd(col, data);
+    setBusy(false);
+    if (r.success) onSaved(isEdit ? "已更新 ✓" : `${title}已儲存 ✓`); else setErr("儲存失敗：" + (/permission/i.test(r.error || "") ? "沒有權限" : "請再試一次"));
+  };
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-sheet">
+        <div className="modal-handle" />
+        <div className="modal-title">{isEdit ? "編輯" : ""}{title}</div>
+        {err && <div className="login-error">{err}</div>}
+        {kind === "payment" && (
+          <>
+            <label className="input-label" htmlFor="fin-st">學員 *</label>
+            <select id="fin-st" className="input-field" value={f.studentUid} onChange={e => set("studentUid", e.target.value)}>
+              <option value="">選擇學員</option>
+              {students.map(x => <option key={x.uid} value={x.uid}>{x.name}{x.courseType ? `（${x.courseType}）` : ""}</option>)}
+            </select>
+          </>
+        )}
+        {kind === "payout" && (
+          <>
+            <label className="input-label" htmlFor="fin-c">教練 *</label>
+            <select id="fin-c" className="input-field" value={f.coachId} onChange={e => set("coachId", e.target.value)}>
+              <option value="">選擇教練</option>
+              {coaches.map(x => <option key={x.uid} value={x.uid}>{x.name}</option>)}
+            </select>
+          </>
+        )}
+        {kind === "expense" && (
+          <>
+            <label className="input-label" htmlFor="fin-item">支出項目 *</label>
+            <input id="fin-item" className="input-field" value={f.item} onChange={e => set("item", e.target.value)} placeholder="例：10 月場地租金" />
+            <div className="input-label">類別</div>
+            <div className="chip-group">{EXPENSE_CATS.map(c => <button type="button" key={c} className={"chip" + (f.category === c ? " sel" : "")} onClick={() => set("category", c)}>{c}</button>)}</div>
+          </>
+        )}
+        <label className="input-label" htmlFor="fin-amt">金額 *</label>
+        <MoneyInput id="fin-amt" value={f.amount} onChange={v => set("amount", v)} />
+        {f.hours != null && kind === "payout" && <div className="hint" style={{ marginTop:-4, marginBottom:10 }}>試算依據：{f.hours} 小時 × NT$ {f.rate}</div>}
+        {kind === "payout" ? (
+          <>
+            <label className="input-label" htmlFor="fin-per">分潤月份 *</label>
+            <input id="fin-per" className="input-field" type="month" value={f.period} onChange={e => set("period", e.target.value)} />
+          </>
+        ) : (
+          <>
+            <label className="input-label" htmlFor="fin-date">{kind === "payment" ? "收款日期" : "支出日期"} *</label>
+            <input id="fin-date" className="input-field" type="date" value={f.date} onChange={e => set("date", e.target.value)} />
+          </>
+        )}
+        {kind === "payment" && (
+          <>
+            <div className="input-label">收款方式</div>
+            <div className="chip-group">{PAY_METHODS.map(m => <button type="button" key={m} className={"chip" + (f.method === m ? " sel" : "")} onClick={() => set("method", m)}>{m}</button>)}</div>
+          </>
+        )}
+        <label className="input-label" htmlFor="fin-note">備註</label>
+        <input id="fin-note" className="input-field" value={f.note} onChange={e => set("note", e.target.value)}
+          placeholder={kind === "payment" ? "例：第一期學費、帳號末五碼 12345" : kind === "payout" ? "例：10 月個人賦能班" : "選填"} />
+        <button className="btn btn-primary btn-lg" style={{ width:"100%", marginTop:4 }} disabled={busy} onClick={save}>{busy ? "儲存中…" : "儲存"}</button>
+        <button className="btn" style={{ width:"100%", marginTop:8, border:"none", background:"none" }} onClick={onClose}>取消</button>
+      </div>
+    </div>
+  );
+}
+
+/* 單一學員：應收學費設定＋收款紀錄 */
+function StudentPaySheet({ bal, payments, onClose, onAddPay, onChanged }) {
+  const { setFinanceSetting, finDelete } = useAuth();
+  const [due, setDue] = useState(bal.due ? String(bal.due) : "");
+  const [msg, setMsg] = useState(""); const [armed, setArmed] = useState("");
+  const list = payments.filter(p => p.studentUid === bal.uid);
+  const saveDue = async () => {
+    const v = due === "" ? 0 : parseAmount(due);
+    if (Number.isNaN(v)) { setMsg("金額格式不正確"); return; }
+    const r = await setFinanceSetting(`tuition.${bal.uid}`, v);
+    setMsg(r.success ? "應收學費已更新 ✓" : "儲存失敗"); if (r.success) onChanged();
+  };
+  const del = async (p) => {
+    if (armed !== p.id) { setArmed(p.id); setTimeout(() => setArmed(a => a === p.id ? "" : a), 3000); return; }
+    await finDelete("payments", p.id); onChanged();
+  };
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-sheet">
+        <div className="modal-handle" />
+        <div className="modal-title" style={{ marginBottom:4 }}>{bal.name}</div>
+        <div className="hint" style={{ marginTop:0, marginBottom:14 }}>{bal.courseType || "—"}</div>
+        <div className="fin-bal">
+          <div><span>應收</span><b>{fmtMoney(bal.due)}</b></div>
+          <div><span>已收</span><b style={{ color:"var(--sage)" }}>{fmtMoney(bal.paid)}</b></div>
+          <div><span>{bal.over ? "溢收" : "未收"}</span><b style={{ color: bal.owed ? "var(--rust)" : "var(--ink)" }}>{fmtMoney(bal.over || bal.owed)}</b></div>
+        </div>
+        <label className="input-label" htmlFor="due">應收學費（課程總金額）</label>
+        <div style={{ display:"flex", gap:8 }}>
+          <div style={{ flex:1 }}><MoneyInput id="due" value={due} onChange={setDue} /></div>
+          <button className="btn" style={{ height:48 }} onClick={saveDue}>儲存</button>
+        </div>
+        {msg && <div className="hint" style={{ marginTop:0 }}>{msg}</div>}
+        <button className="btn btn-primary btn-lg" style={{ width:"100%", marginTop:10 }} onClick={() => onAddPay(bal.uid)}>＋ 登記這位學員的收款</button>
+        <div className="sec-h">收款紀錄（{list.length}）</div>
+        {list.length === 0 ? <div className="card empty">還沒有收款紀錄</div> : list.map(p => (
+          <div key={p.id} className="fin-row">
+            <div style={{ flex:1, minWidth:0 }}>
+              <div className="fin-t">{fmtMoney(p.amount)}</div>
+              <div className="fin-s">{p.date} · {p.method || "—"}{p.note ? ` · ${p.note}` : ""}</div>
+            </div>
+            <button className={"btn btn-sm" + (armed === p.id ? " danger" : "")} onClick={() => del(p)}>{armed === p.id ? "確定刪除" : "刪除"}</button>
+          </div>
+        ))}
+        <button className="btn" style={{ width:"100%", marginTop:10, border:"none", background:"none" }} onClick={onClose}>關閉</button>
+      </div>
+    </div>
+  );
+}
+
+function AFinance({ onSwitch }) {
+  const { fetchFinance, fetchMembers, fetchSessions, finAdd, finUpdate, finDelete, setFinanceSetting } = useAuth();
+  const [data,     setData]     = useState({ payments:[], payouts:[], expenses:[], settings:{ tuition:{}, rates:{} } });
+  const [members,  setMembers]  = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [err,      setErr]      = useState("");
+  const [refresh,  setRefresh]  = useState(0);
+  const [period,   setPeriod]   = useState(todayStr().slice(0, 7));
+  const [tab,      setTab]      = useState("income");
+  const [form,     setForm]     = useState(null);     // { kind, init }
+  const [stu,      setStu]      = useState(null);     // 學員收款明細
+  const [poFilter, setPoFilter] = useState("");
+  const [armed,    setArmed]    = useState("");
+  const [rates,    setRates]    = useState({});
+  const [toast,    setToast]    = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([fetchFinance(), fetchMembers(), fetchSessions()]).then(([d, m, s]) => {
+      setData(d); setMembers(m); setSessions(s); setRates(r => ({ ...d.settings.rates, ...r })); setErr(""); setLoading(false);
+    }).catch(e => { setErr(/permission/i.test(e.message || "") ? "沒有讀取財務資料的權限（需要發布最新的安全規則）。" : "載入失敗，請重新整理。"); setLoading(false); });
+  }, [refresh]);
+  const reload = (msg) => { if (msg) setToast(msg); setRefresh(r => r + 1); };
+
+  const students = members.filter(m => rolesOf(m).includes("student"));
+  const coaches  = members.filter(m => rolesOf(m).includes("coach"));
+  const sum = financeSummary(data, period);
+  const months = periodOptions(data, todayStr());
+  const year = todayStr().slice(0, 4);
+  const pLabel = !period ? "全部期間" : /^\d{4}$/.test(period) ? `${period} 全年` : `${Number(period.slice(5))} 月`;
+  const balances = studentBalances(students, data.payments, data.settings.tuition);
+  const owedTotal = balances.reduce((t, b) => t + b.owed, 0);
+  const isMonth = /^\d{4}-\d{2}$/.test(period);
+  const sugs = isMonth ? payoutSuggestions(sessions, period, rates, data.payouts) : [];
+  const inP = (x, f = "date") => inPeriod(x[f], period);
+  const periodPayouts = data.payouts.filter(o => inPeriod(o.period ? o.period + "-01" : o.date, period))
+    .filter(o => !poFilter || (poFilter === "paid" ? o.status === "paid" : o.status !== "paid"));
+
+  const arm = (id, fn) => { if (armed !== id) { setArmed(id); setTimeout(() => setArmed(a => a === id ? "" : a), 3000); return; } setArmed(""); fn(); };
+  const markPaid = async (o, paid) => {
+    const r = await finUpdate("payouts", o.id, paid ? { status:"paid", paidAt: todayStr() } : { status:"pending", paidAt: "" });
+    reload(r.success ? (paid ? `已標記 ${o.coachName} 已匯款 ✓` : "已改回待匯款") : "更新失敗");
+  };
+  const saveRate = async (cid) => {
+    const v = rates[cid] === "" ? 0 : parseAmount(rates[cid]);
+    if (Number.isNaN(v)) return;
+    await setFinanceSetting(`rates.${cid}`, v);
+  };
+  const createFromSug = async (g) => {
+    if (!(g.amount > 0)) { setToast("請先填寫每小時分潤"); return; }
+    await saveRate(g.coachId);
+    const r = await finAdd("payouts", { coachId: g.coachId, coachName: g.coachName, amount: g.amount, period, date: period + "-01",
+      hours: g.hours, rate: g.rate, sessions: g.sessions, note: `${Number(period.slice(5))} 月完成交付 ${g.sessions} 堂`, status: "pending" });
+    reload(r.success ? `已建立 ${g.coachName} 的分潤（待匯款）` : "建立失敗");
+  };
+  const download = () => {
+    const blob = new Blob([financeCsv(data, period)], { type:"text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob); const a = document.createElement("a");
+    a.href = url; a.download = `iSTAR財務_${period || "全部"}.csv`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  return (
+    <div className="screen-enter">
+      <div className="topbar"><div className="topbar-title">財務管理</div></div>
+      <div className="content">
+        {err && <div className="login-error">{err}</div>}
+        <div className="filter-row">
+          {months.map(m => <button key={m} className={"filter-chip" + (period === m ? " on" : "")} style={{ color: period === m ? "var(--gold)" : "var(--ink-2)" }} onClick={() => setPeriod(m)}>{Number(m.slice(5))} 月{m.slice(0,4) !== year ? ` ${m.slice(0,4)}` : ""}</button>)}
+          <button className={"filter-chip" + (period === year ? " on" : "")} style={{ color: period === year ? "var(--gold)" : "var(--ink-2)" }} onClick={() => setPeriod(year)}>{year} 全年</button>
+          <button className={"filter-chip" + (!period ? " on" : "")} style={{ color: !period ? "var(--gold)" : "var(--ink-2)" }} onClick={() => setPeriod("")}>全部</button>
+        </div>
+
+        {/* 公積金計算 */}
+        <div className="fund-card">
+          <div className="fund-k">星辰聯盟公積金 · {pLabel}</div>
+          <div className="fund-v" style={{ color: sum.fund < 0 ? "var(--rust)" : "var(--sage)" }}>{loading ? "—" : fmtMoney(sum.fund)}</div>
+          <div className="fund-lines">
+            <div><span>已收金額</span><b>{fmtMoney(sum.received)}</b></div>
+            <div><span>− 教練分潤</span><b>{fmtMoney(sum.payout)}</b></div>
+            {sum.payoutPending > 0 && <div className="sub"><span>其中待匯款</span><b style={{ color:"#8A5A10" }}>{fmtMoney(sum.payoutPending)}</b></div>}
+            <div><span>− 其他支出</span><b>{fmtMoney(sum.expense)}</b></div>
+            <div className="eq"><span>＝ 公積金</span><b>{fmtMoney(sum.fund)}</b></div>
+          </div>
+          <button className="link-btn" onClick={download}>⬇ 匯出本期明細 CSV</button>
+        </div>
+
+        <div className="inner-tabs" style={{ margin:"4px -16px 12px", padding:"0 16px" }}>
+          <button className={"inner-tab" + (tab === "income" ? " active" : "")} onClick={() => setTab("income")}>收款</button>
+          <button className={"inner-tab" + (tab === "payout" ? " active" : "")} onClick={() => setTab("payout")}>教練分潤{sum.counts.pending ? <span className="tab-n">{sum.counts.pending}</span> : null}</button>
+          <button className={"inner-tab" + (tab === "expense" ? " active" : "")} onClick={() => setTab("expense")}>支出</button>
+        </div>
+
+        {loading ? <div className="empty">載入中…</div> : tab === "income" ? (
+          <>
+            <button className="btn btn-primary btn-lg" style={{ width:"100%" }} onClick={() => setForm({ kind:"payment" })}>＋ 登記收款</button>
+            <div className="sec-h">學員收款狀況<span className="sec-note">未收合計 {fmtMoney(owedTotal)}</span></div>
+            {balances.length === 0 ? <div className="card empty">還沒有學員</div> : (
+              <div className="card" style={{ padding:"4px 14px" }}>
+                {balances.map(b => (
+                  <button key={b.uid} className="hr-row" onClick={() => setStu(b)}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div className="hr-name">{b.name}</div>
+                      <div className="hr-sub">已收 {fmtMoney(b.paid)}{b.due ? ` ／ 應收 ${fmtMoney(b.due)}` : " · 尚未設定應收學費"}</div>
+                      {b.due > 0 && <div className="prog-track" style={{ marginTop:6 }}><div className="prog-fill" style={{ width:`${Math.min(100, Math.round(b.paid / b.due * 100))}%`, background: b.owed ? "var(--gold)" : "var(--sage)" }} /></div>}
+                    </div>
+                    <div className="fin-owed">{b.owed ? <><span>未收</span>{fmtMoney(b.owed)}</> : b.due ? <span className="ok">✓ 已收齊</span> : <span>設定 ›</span>}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="sec-h">{pLabel}收款明細</div>
+            {data.payments.filter(x => inP(x)).length === 0 ? <div className="card empty">這段期間沒有收款</div> :
+              data.payments.filter(x => inP(x)).map(p => (
+                <div key={p.id} className="fin-row card">
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div className="fin-t">{p.studentName} <span className="fin-amt in">+{fmtMoney(p.amount)}</span></div>
+                    <div className="fin-s">{p.date} · {p.method || "—"}{p.note ? ` · ${p.note}` : ""}</div>
+                  </div>
+                  <button className="btn btn-sm" onClick={() => setForm({ kind:"payment", init:p })}>編輯</button>
+                </div>
+              ))}
+          </>
+        ) : tab === "payout" ? (
+          <>
+            {isMonth && (
+              <div className="card" style={{ borderLeft:"3px solid var(--gold)" }}>
+                <div className="alert-t">依 {Number(period.slice(5))} 月完成交付的時數試算</div>
+                <div className="hint" style={{ marginTop:2 }}>只計算已簽到＋簽退的課程。填好每位教練的每小時分潤，按「建立分潤」即產生待匯款紀錄。</div>
+                {sugs.length === 0 ? <div className="empty" style={{ padding:"14px 0 4px" }}>這個月還沒有完成交付的課程</div> : sugs.map(g => (
+                  <div key={g.coachId} className="sug-row">
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div className="hr-name">{g.coachName}</div>
+                      <div className="hr-sub">{g.sessions} 堂 · {g.hours} 小時</div>
+                    </div>
+                    <div className="sug-rate">
+                      <span>每小時</span>
+                      <input className="input-field" inputMode="numeric" value={rates[g.coachId] ?? ""} placeholder="0" aria-label={`${g.coachName} 每小時分潤`}
+                        onChange={e => setRates(r => ({ ...r, [g.coachId]: e.target.value.replace(/[^\d]/g, "") }))} onBlur={() => saveRate(g.coachId)} />
+                    </div>
+                    <div className="sug-act">
+                      <b>{fmtMoney(g.amount)}</b>
+                      {g.existing.length
+                        ? <span className="hint" style={{ margin:0 }}>已建立</span>
+                        : <button className="btn btn-sm btn-gold" onClick={() => createFromSug(g)}>建立分潤</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="btn" style={{ width:"100%", marginBottom:4 }} onClick={() => setForm({ kind:"payout", init:{ period: isMonth ? period : todayStr().slice(0,7) } })}>＋ 手動新增分潤</button>
+            <div className="seg" style={{ marginTop:12 }}>
+              {[["","全部"],["pending","待匯款"],["paid","已匯款"]].map(([k,l]) => <button key={k} className={poFilter === k ? "on" : ""} onClick={() => setPoFilter(k)}>{l}</button>)}
+            </div>
+            {periodPayouts.length === 0 ? <div className="card empty">沒有分潤紀錄</div> : periodPayouts.map(o => (
+              <div key={o.id} className={"card po-card" + (o.status === "paid" ? " paid" : "")}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start" }}>
+                  <div style={{ minWidth:0 }}>
+                    <div className="hr-name">{o.coachName}</div>
+                    <div className="fin-s">{o.period ? `${o.period.replace("-", " 年 ")} 月` : o.date}{o.hours ? ` · ${o.hours} 小時 × NT$ ${o.rate}` : ""}{o.note ? ` · ${o.note}` : ""}</div>
+                  </div>
+                  <span className="attend-pill" style={o.status === "paid" ? { background:"#E3F1E7", color:"#2F6B45" } : { background:"#FCEFD2", color:"#8A5A10" }}>{o.status === "paid" ? "已匯款" : "待匯款"}</span>
+                </div>
+                <div className="po-amt">{fmtMoney(o.amount)}</div>
+                {o.status === "paid" && <div className="fin-s">匯款日期：{o.paidAt || "—"}</div>}
+                <div className="btn-row">
+                  {o.status === "paid"
+                    ? <button className="btn btn-sm" onClick={() => markPaid(o, false)}>改回待匯款</button>
+                    : <button className="btn btn-sm btn-primary" onClick={() => markPaid(o, true)}>✓ 確認已匯款</button>}
+                  <button className="btn btn-sm" onClick={() => setForm({ kind:"payout", init:o })}>編輯</button>
+                  <button className={"btn btn-sm" + (armed === o.id ? " danger" : "")} onClick={() => arm(o.id, async () => { await finDelete("payouts", o.id); reload("已刪除"); })}>{armed === o.id ? "確定刪除" : "刪除"}</button>
+                </div>
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <button className="btn btn-primary btn-lg" style={{ width:"100%" }} onClick={() => setForm({ kind:"expense" })}>＋ 新增支出</button>
+            <div className="sec-h">{pLabel}支出<span className="sec-note">合計 {fmtMoney(sum.expense)}</span></div>
+            {data.expenses.filter(x => inP(x)).length === 0 ? <div className="card empty">這段期間沒有支出</div> :
+              data.expenses.filter(x => inP(x)).map(x => (
+                <div key={x.id} className="fin-row card">
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div className="fin-t">{x.item} <span className="fin-amt out">−{fmtMoney(x.amount)}</span></div>
+                    <div className="fin-s">{x.date} · {x.category || "其他"}{x.note ? ` · ${x.note}` : ""}</div>
+                  </div>
+                  <button className="btn btn-sm" onClick={() => setForm({ kind:"expense", init:x })}>編輯</button>
+                  <button className={"btn btn-sm" + (armed === x.id ? " danger" : "")} onClick={() => arm(x.id, async () => { await finDelete("expenses", x.id); reload("已刪除"); })}>{armed === x.id ? "確定" : "刪除"}</button>
+                </div>
+              ))}
+          </>
+        )}
+      </div>
+      {form && <FinFormSheet kind={form.kind} init={form.init} students={students} coaches={coaches} onClose={() => setForm(null)} onSaved={(m) => { setForm(null); reload(m); }} />}
+      {stu && <StudentPaySheet bal={balances.find(b => b.uid === stu.uid) || stu} payments={data.payments} onClose={() => setStu(null)}
+        onAddPay={(uid) => { setStu(null); setForm({ kind:"payment", init:{ studentUid: uid } }); }} onChanged={() => reload()} />}
+      <Toast msg={toast} onDone={() => setToast("")} />
+      <BottomNav tabs={A_TABS} active="finance" onSwitch={onSwitch} />
+    </div>
+  );
+}
+
 /* ── 字級設定（存在這台裝置）── */
 const FS_OPTIONS = [["1", "標準"], ["1.12", "大"], ["1.25", "特大"]];
 const FS_KEY = "istar.fontScale";
@@ -4408,14 +4889,16 @@ export default function App() {
       case "members": return <AMembers onSwitch={setATab} />;
       case "review":  return <AReview  onSwitch={setATab} />;
       case "records": return <ARecords onSwitch={setATab} />;
+      case "finance": return <AFinance onSwitch={setATab} />;
       default:        return <AHome    onSwitch={setATab} />;
     }
   };
 
   // 底部導覽紅點：學員＝待確認課程數；教練＝學員改期請求數
-  const { fetchSessions, fetchJourneys } = useAuth();
+  const { fetchSessions, fetchJourneys, fetchAccessRequests } = useAuth();
   const [badges, setBadges] = useState({});
   useEffect(() => {
+    if (profile?.uid && role === "admin") { fetchAccessRequests().then(rs => setBadges({ members: rs.length })).catch(() => setBadges({})); return; }
     if (!profile?.uid || (role !== "student" && role !== "coach")) { setBadges({}); return; }
     const q = role === "student" ? { studentUid: profile.uid } : { coachId: profile.uid };
     Promise.all([fetchSessions(q), role === "coach" ? fetchJourneys() : Promise.resolve([])]).then(([list, js]) => {
@@ -4425,7 +4908,7 @@ export default function App() {
         : { assign:  future.filter(s => s.status === "reschedule").length,
             home:    js.reduce((n, j) => n + pendingClaims(j).length, 0) });
     }).catch(() => {});
-  }, [profile?.uid, role, sTab, cTab, modal]);
+  }, [profile?.uid, role, sTab, cTab, aTab, modal]);
 
   const ROLE_LABELS = { admin:"管理員", coach:"教練", student:"學員" };
   const ROLE_CLASS  = { admin:"admin",  coach:"coach",  student:"student" };

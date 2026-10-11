@@ -562,6 +562,90 @@ export function AuthProvider({ children }) {
   };
 
   /* ════════════════════════════════════════
+     財務（只有管理員能讀寫）
+  ════════════════════════════════════════ */
+  const FIN_COLS = ["payments", "payouts", "expenses"];
+  const fetchFinance = async () => {
+    const [payments, payouts, expenses, settings] = await Promise.all([
+      ...FIN_COLS.map(c => getDocs(collection(db, c)).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })))),
+      getDoc(doc(db, "finance", "settings")).then(s => (s.exists() ? s.data() : {})),
+    ]);
+    const byDate = (a, b) => (b.date || b.period || "").localeCompare(a.date || a.period || "");
+    return { payments: payments.sort(byDate), payouts: payouts.sort(byDate), expenses: expenses.sort(byDate),
+             settings: { tuition: settings.tuition || {}, rates: settings.rates || {} } };
+  };
+  const finAdd = async (col, data) => {
+    try {
+      const ref = await addDoc(collection(db, col), { ...data, createdBy: profile?.name || "", createdByUid: auth.currentUser?.uid || "", createdAt: serverTimestamp() });
+      return { success: true, id: ref.id };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+  const finUpdate = async (col, id, data) => {
+    try { await updateDoc(doc(db, col, id), { ...data, updatedAt: serverTimestamp() }); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+  const finDelete = async (col, id) => {
+    try { await deleteDoc(doc(db, col, id)); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+  // 應收學費、教練每小時分潤：key 例如 "tuition.uid123"
+  const setFinanceSetting = async (path, value) => {
+    try {
+      const ref = doc(db, "finance", "settings");
+      const [group, key] = path.split(".");
+      await setDoc(ref, { [group]: { [key]: value }, updatedAt: serverTimestamp() }, { merge: true });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  /* ════════════════════════════════════════
+     開通申請：有登入帳號但沒有成員資料的人（例如在 Firebase 直接建立、或成員被刪除過）
+  ════════════════════════════════════════ */
+  const myRequest = async () => {
+    try { const s = await getDoc(doc(db, "accessRequests", auth.currentUser.uid)); return s.exists() ? s.data() : null; }
+    catch { return null; }
+  };
+  const requestAccess = async (name, note = "") => {
+    try {
+      const u = auth.currentUser;
+      await setDoc(doc(db, "accessRequests", u.uid), { uid: u.uid, email: (u.email || "").toLowerCase(), name: name.trim(), note: note.trim(), createdAt: serverTimestamp() });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+  const fetchAccessRequests = async () => {
+    try { const s = await getDocs(collection(db, "accessRequests")); return s.docs.map(d => ({ id: d.id, ...d.data() })); }
+    catch { return []; }
+  };
+  const approveAccess = async (req, formData) => {
+    try {
+      const list = rolesOf({ roles: formData.roles });
+      const r = list[0];
+      const data = { name: formData.name || req.name || "", email: req.email, role: r, roles: list, isAdmin: list.includes("admin"), createdAt: serverTimestamp(), status: "active" };
+      if (r === "student") Object.assign(data, { birthdate: formData.birthdate || "", coachName: formData.coachName || "", courseType: formData.courseType || "", joinDate: formData.joinDate || todayStr() });
+      const batch = writeBatch(db);
+      batch.set(doc(db, "users", req.id), data);
+      if (r === "student") batch.set(doc(db, "journeys", req.id), { ...initialJourney({ uid: req.id, name: data.name, courseType: data.courseType }), updatedAt: serverTimestamp() });
+      batch.delete(doc(db, "accessRequests", req.id));
+      await batch.commit();
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+  const rejectAccess = async (id) => {
+    try { await deleteDoc(doc(db, "accessRequests", id)); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+  };
+  // 被開通後不用登出：重新讀一次自己的成員資料
+  const refreshProfile = async () => {
+    const u = auth.currentUser; if (!u) return false;
+    const snap = await getDoc(doc(db, "users", u.uid));
+    if (!snap.exists()) return false;
+    const data = snap.data(); const list = rolesOf(data);
+    setProfile({ uid: u.uid, ...data, courseType: normalizeCourse(data.courseType) });
+    setRoles(list); setRole(list[0] || null);
+    return true;
+  };
+
+  /* ════════════════════════════════════════
      學員反饋（feedbacks）
   ════════════════════════════════════════ */
   const addFeedback = async (text) => {
@@ -683,7 +767,8 @@ export function AuthProvider({ children }) {
       /* 排課 */ addSessions, updateSession, deleteSession, fetchSessions, fetchSession,
                  confirmSession, requestReschedule, bookOpenSession,
       /* 出席 */ checkInSession, checkOutSession, fetchSessionPhotos, addSessionPhoto, deleteSessionPhoto,
-      /* 帳號 */ resetPassword,
+      /* 帳號 */ resetPassword, myRequest, requestAccess, fetchAccessRequests, approveAccess, rejectAccess, refreshProfile,
+      /* 財務 */ fetchFinance, finAdd, finUpdate, finDelete, setFinanceSetting,
       /* 反饋 */ addFeedback, fetchFeedbacks,
     }}>
       {children}
