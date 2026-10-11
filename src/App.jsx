@@ -21,9 +21,52 @@ import {
   PAY_METHODS, EXPENSE_CATS, parseAmount, fmtMoney, inPeriod, financeSummary, studentBalances,
   payoutSuggestions, financeCsv, periodOptions,
 } from "./finance";
+import {
+  memberStartOf, memberEndOf, daysJoined, daysLeft, memberStatus, MEMBER_STATUS, canUseDate, datesAfterEnd,
+  fmtYmd, expiredMessage, addMonthsYmd,
+} from "./membership";
 
 // 字級：依使用者設定的倍率縮放（--fs）
 const fz = (px) => `calc(${px}px * var(--fs))`;
+
+/* ── 會員期間 ── */
+function MemberPill({ u }) {
+  const st = memberStatus(u), c = MEMBER_STATUS[st];
+  return <span className="member-pill" style={{ color:c.color, background:c.bg }}>{c.label}</span>;
+}
+// 一行摘要（教練／管理員看學員用）
+function MemberLine({ u, style }) {
+  const start = memberStartOf(u), end = memberEndOf(u), d = daysJoined(u), left = daysLeft(u);
+  if (!start && !end) return <div className="member-line" style={style}><MemberPill u={u} /><span>尚未設定會員期間</span></div>;
+  return (
+    <div className="member-line" style={style}>
+      <MemberPill u={u} />
+      <span>{fmtYmd(start)} – {end ? fmtYmd(end) : "未設定"}</span>
+      {d != null && d > 0 && <span>· 加入第 {d} 天</span>}
+      {left != null && left >= 0 && <span>· 剩 {left} 天</span>}
+    </div>
+  );
+}
+// 大卡片（學員總覽、教練看學員詳情）
+function MemberCard({ u, title = "我的會員資格", who = "你" }) {
+  const start = memberStartOf(u), end = memberEndOf(u), d = daysJoined(u), left = daysLeft(u), st = memberStatus(u);
+  return (
+    <div className={"member-card ms-" + st}>
+      <div className="member-card-head"><span>{title}</span><MemberPill u={u} /></div>
+      <div className="member-days">
+        {d == null ? <span className="member-days-sub">尚未設定會員起始日</span>
+          : d === 0 ? <><span className="member-days-sub">會員將於 {fmtYmd(start)} 開始</span></>
+          : <><span className="member-days-sub">加入星辰聯盟</span><b>{d}</b><span className="member-days-sub">天</span></>}
+      </div>
+      <div className="member-dates">
+        <div><span>會員起始日</span><b>{fmtYmd(start)}</b></div>
+        <div><span>會員到期日</span><b>{end ? fmtYmd(end) : "未設定"}</b></div>
+      </div>
+      {st === "expired" && <div className="member-note">{who === "你" ? "你的" : who + "的"}會員已到期，無法選擇到期日之後的課程時間。{who === "你" ? "如需續約請聯絡星辰聯盟管理員。" : ""}</div>}
+      {st === "expiring" && <div className="member-note">會員還有 {left} 天到期，到期日之後無法再選擇課程時間。</div>}
+    </div>
+  );
+}
 
 const GLOBAL_CSS = `
 :root {
@@ -706,6 +749,25 @@ button, input, select, textarea { font-family: var(--font); }
 .alert-t { font-size: calc(17px * var(--fs)); font-weight: 700; }
 .alert-s { font-size: calc(14px * var(--fs)); color: var(--ink-2); margin: 3px 0 10px; }
 .hint { font-size: calc(14px * var(--fs)); color: var(--ink-3); margin-top: 8px; line-height: 1.6; }
+/* 會員期間 */
+.member-pill { display:inline-block; font-size: calc(12px * var(--fs)); font-weight:700; padding:2px 8px; border-radius: var(--r-pill); white-space:nowrap; }
+.member-line { display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; font-size: calc(13px * var(--fs)); color: var(--ink-3); margin-top:4px; line-height:1.5; }
+.member-card { border-radius: var(--r-xl); padding: 16px 18px; margin-bottom: 14px; background: linear-gradient(135deg, #FFFDF7, var(--gold-pale)); border: 1px solid var(--gold-line); }
+.member-card.ms-expired { background: var(--rust-pale); border-color: rgba(139,58,42,.25); }
+.member-card.ms-expiring { background: #FEF7E0; border-color: rgba(138,104,32,.3); }
+.member-card-head { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size: calc(14px * var(--fs)); font-weight:700; color: var(--gold); letter-spacing:.04em; }
+.member-days { display:flex; align-items:baseline; gap:6px; margin: 8px 0 12px; color: var(--ink); }
+.member-days b { font-family: var(--font-display); font-size: calc(46px * var(--fs)); line-height:1; color: var(--ink); }
+.member-days-sub { font-size: calc(15px * var(--fs)); color: var(--ink-2); }
+.member-dates { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+.member-dates div { background: rgba(255,255,255,.75); border-radius: var(--r-lg); padding: 10px 12px; }
+.member-dates span { display:block; font-size: calc(13px * var(--fs)); color: var(--ink-3); }
+.member-dates b { display:block; font-size: calc(18px * var(--fs)); color: var(--ink); margin-top:2px; letter-spacing:.02em; }
+.member-note { margin-top: 12px; font-size: calc(14px * var(--fs)); line-height:1.6; color: var(--rust); font-weight:600; }
+.ms-expiring .member-note { color: #8A6820; }
+.member-box { border:1px solid var(--gold-line); background: #FFFDF7; border-radius: var(--r-lg); padding: 12px 14px 4px; margin-bottom: 14px; }
+.member-box-title { font-size: calc(15px * var(--fs)); font-weight:700; color: var(--gold); margin-bottom: 4px; }
+.slot-locked { opacity:.55; }
 .coach-name { font-size: calc(17px * var(--fs)); font-weight: 600; }
 .coach-tag { font-size: calc(14px * var(--fs)); color: var(--ink-3); }
 .coach-row { padding: 12px 0; min-height: 56px; }
@@ -1741,6 +1803,7 @@ function StudentJourneySheet({ student, onClose, onChanged }) {
             <div style={{ fontSize:fz(14), color:"var(--ink-3)" }}>{student.courseType || "—"}</div>
           </div>
         </div>
+        <MemberCard u={student} title="會員資格" who={student.name || "學員"} />
         {!j ? <div className="empty">載入中…</div> : (
           <>
             {canAdvance(j) && (
@@ -2231,7 +2294,7 @@ function HoursReport({ sessions, viewer, onOpen }) {
 
 /* ── 課程時段詳情（依角色顯示不同操作）── */
 function SessionSheet({ s: initial, viewer, onClose, onChanged, onEdit, onWriteRecord }) {
-  const { confirmSession, requestReschedule, bookOpenSession, deleteSession, fetchSession } = useAuth();
+  const { profile, confirmSession, requestReschedule, bookOpenSession, deleteSession, fetchSession } = useAuth();
   // 簽到、上傳照片、簽退後留在這個畫面並顯示最新資料
   const [s, setS] = useState(initial);
   const reload = async (msg) => {
@@ -2247,6 +2310,8 @@ function SessionSheet({ s: initial, viewer, onClose, onChanged, onEdit, onWriteR
   const [confirmDel, setConfirmDel] = useState(false);
   const past = isPast(s);
   const isLink = /^https?:\/\//i.test(s.location || "");
+  // 學員：會員到期日之後的時段不能確認或預約
+  const lockedByEnd = viewer === "student" && !canUseDate(profile, s.date);
 
   const run = async (fn, okMsg) => {
     setBusy(true); setError("");
@@ -2297,7 +2362,16 @@ function SessionSheet({ s: initial, viewer, onClose, onChanged, onEdit, onWriteR
         )}
 
         {/* ── 學員操作 ── */}
-        {viewer === "student" && s.status === "pending" && !past && !askChange && (
+        {lockedByEnd && (s.status === "pending" || s.status === "open") && !past && (
+          <div className="alert-card member-locked" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)" }}>
+            <div style={{ fontSize:fz(15), fontWeight:700, color:"var(--rust)" }}>無法選擇這個時段</div>
+            <div style={{ fontSize:fz(14), color:"var(--ink-2)", marginTop:4, lineHeight:1.6 }}>{expiredMessage(profile)}</div>
+            {s.status === "pending" && !askChange && (
+              <button className="btn btn-sm" style={{ marginTop:10 }} onClick={() => setAskChange(true)}>請教練改到到期日之前</button>
+            )}
+          </div>
+        )}
+        {viewer === "student" && s.status === "pending" && !past && !askChange && !lockedByEnd && (
           <>
             <button className={"check-row" + (agree ? " on" : "")} onClick={() => setAgree(a => !a)}>
               <span className="check-box">{agree && <IcCheck />}</span>
@@ -2323,7 +2397,7 @@ function SessionSheet({ s: initial, viewer, onClose, onChanged, onEdit, onWriteR
             </div>
           </>
         )}
-        {viewer === "student" && s.status === "open" && !past && (
+        {viewer === "student" && s.status === "open" && !past && !lockedByEnd && (
           <button className="btn btn-primary" style={{ width:"100%", padding:12 }} disabled={busy}
             onClick={() => run(() => bookOpenSession(s.id), "預約成功，課程已排定 ✓")}>
             {busy ? "預約中…" : "✦ 預約此時段"}
@@ -2434,9 +2508,20 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
     { date:d, start:form.start, end:form.end, coachId:profile?.uid, studentUid: form.mode === "assign" ? form.studentUid : "" },
     pool, editData?.id));
 
+  const selStudent = form.mode === "assign" ? students.find(x => x.uid === form.studentUid) : null;
+  const keepsDate = isEdit && form.date === editData.date && form.studentUid === (editData.studentUid || "");
+  const overEnd = selStudent && !keepsDate ? datesAfterEnd(selStudent, dates) : [];
+
   const handleSave = async () => {
     const msg = validateSession(form);
     if (msg) { setError(msg); return; }
+    // 會員到期日之後不能排課
+    if (overEnd.length) {
+      setError(`${selStudent.name || "此學員"}的會員到期日為 ${fmtYmd(memberEndOf(selStudent))}，` +
+        (dates.length > 1 ? `其中 ${overEnd.length} 堂（${overEnd.map(fmtYmd).join("、")}）超過到期日，` : "") +
+        "無法排在到期日之後。請調整日期或重複次數。");
+      return;
+    }
     if (conflicts.length && !ackConflict) { setAckConflict(true); setError(""); return; }
     setBusy(true); setError("");
     const student = students.find(s => s.uid === form.studentUid);
@@ -2497,9 +2582,11 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
               ? <div style={{ fontSize:fz(15), color:"var(--ink-3)", marginBottom:12 }}>尚無學員，請管理員先新增學員。</div>
               : <div className="chip-group">
                   {students.map(st => (
-                    <div key={st.uid} className={"chip" + (form.studentUid === st.uid ? " sel" : "")} onClick={() => set("studentUid", st.uid)}>{st.name}</div>
+                    <div key={st.uid} className={"chip" + (form.studentUid === st.uid ? " sel" : "") + (memberStatus(st) === "expired" ? " slot-locked" : "")}
+                      onClick={() => set("studentUid", st.uid)}>{st.name}{memberStatus(st) === "expired" ? "（已到期）" : ""}</div>
                   ))}
                 </div>}
+            {selStudent && <MemberLine u={selStudent} style={{ marginTop:-6, marginBottom:12 }} />}
           </>
         )}
 
@@ -2514,7 +2601,12 @@ function ModalSession({ editData, defaultDate, coachSessions, onClose }) {
         {assignedIds.length > 0 && <div style={{ fontSize:fz(14), color:"var(--ink-4)", marginTop:-6, marginBottom:10 }}>★ 為已分配給此學員的模組</div>}
 
         <div className="input-label">日期 *</div>
-        <input className="input-field" type="date" min={todayStr()} value={form.date} onChange={e => set("date", e.target.value)} />
+        <input className="input-field" type="date" min={todayStr()} max={selStudent ? memberEndOf(selStudent) || undefined : undefined} value={form.date} onChange={e => set("date", e.target.value)} />
+        {overEnd.length > 0 && (
+          <div className="hint member-over" style={{ color:"var(--rust)", marginTop:-4, marginBottom:10 }}>
+            ⚠ {selStudent.name}的會員到期日為 {fmtYmd(memberEndOf(selStudent))}，{dates.length > 1 ? `有 ${overEnd.length} 堂超過到期日` : "這個日期超過到期日"}，無法排課。
+          </div>
+        )}
 
         <div className="input-label">時間 *</div>
         <div className="time-row">
@@ -2682,7 +2774,7 @@ function SHome({ onSwitch }) {
       setTodayList(today);
       setNextSession(future.find(s => s.status === "confirmed" && s.date !== todayStr()) || null);
     }).catch(() => {});
-    fetchSessions({ status: "open" }).then(list => setOpenCount(list.filter(s => !isPast(s)).length)).catch(() => {});
+    fetchSessions({ status: "open" }).then(list => setOpenCount(list.filter(s => !isPast(s) && canUseDate(profile, s.date)).length)).catch(() => {});
     // 成長路徑
     fetchJourney(profile.uid).then(setJourney).catch(() => {});
     // 載入下一個待完成模組
@@ -2737,6 +2829,9 @@ function SHome({ onSwitch }) {
             </button>
           )}
         </div>
+
+        {/* ── 會員資格：起始日、到期日、加入天數 ── */}
+        {profile && <MemberCard u={profile} />}
 
         {/* ── 待確認課程（最優先的行動）── */}
         {pendingCount > 0 && (
@@ -2863,6 +2958,7 @@ function SCourses({ onSwitch }) {
   const [tab,       setTab]       = useState("schedule");
   const [mine,      setMine]      = useState([]);   // 排給我的
   const [openSlots, setOpenSlots] = useState([]);   // 開放預約
+  const [lockedCount, setLockedCount] = useState(0); // 到期日之後、不能預約的開放時段
   const [modules,   setModules]   = useState([]);
   const [selected,  setSelected]  = useState(todayStr());
   const [sheet,     setSheet]     = useState(null);
@@ -2878,7 +2974,10 @@ function SCourses({ onSwitch }) {
       fetchSessions({ status: "open" }),
     ]).then(([m, o]) => {
       setMine(m);
-      setOpenSlots(o.filter(s => !isPast(s)));
+      const future = o.filter(s => !isPast(s));
+      // 會員到期日之後的開放時段不能選，不顯示
+      setOpenSlots(future.filter(s => canUseDate(profile, s.date)));
+      setLockedCount(future.filter(s => !canUseDate(profile, s.date)).length);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [profile?.uid, refresh]);
@@ -2918,6 +3017,18 @@ function SCourses({ onSwitch }) {
                 <div style={{ fontSize:fz(16), fontWeight:700, color:"#8A6820" }}>教練幫你排了 {pending.length} 堂課，請確認時間</div>
                 <div style={{ fontSize:fz(14), color:"#A07830", marginTop:3, marginBottom:10 }}>點選課程，勾選「確認課程時間」即完成</div>
                 {pending.map(s => <SessionItem key={s.id} s={s} viewer="student" onOpen={setSheet} showDate />)}
+              </div>
+            )}
+
+            {/* 會員到期提醒 */}
+            {memberEndOf(profile) && (memberStatus(profile) === "expired" || lockedCount > 0) && (
+              <div className="alert-card" style={{ background:"var(--rust-pale)", borderColor:"rgba(139,58,42,.2)" }}>
+                <div style={{ fontSize:fz(15), fontWeight:700, color:"var(--rust)" }}>
+                  {memberStatus(profile) === "expired" ? `你的會員已於 ${fmtYmd(memberEndOf(profile))} 到期` : `你的會員到期日：${fmtYmd(memberEndOf(profile))}`}
+                </div>
+                <div style={{ fontSize:fz(14), color:"var(--ink-2)", marginTop:3, lineHeight:1.6 }}>
+                  到期日之後無法選擇課程時間{lockedCount > 0 ? `（有 ${lockedCount} 個到期後的時段未顯示）` : ""}。如需續約請聯絡星辰聯盟管理員。
+                </div>
               </div>
             )}
 
@@ -3149,7 +3260,7 @@ function CHome({ onSwitch, onModal }) {
   const toFix = sortSessions(mySessions.filter(s => s.date >= recentFrom && s.date < todayStr()
     && ["needOut", "missed"].includes(attendanceState(s)))).reverse();
   const writeRecord = (s) => {
-    setSheet(null);
+    setSheet(null); setSRefresh(r => r + 1);   // 列表同步最新狀態（例如剛簽退），即使之後取消不寫
     onModal?.("record", () => { updateSession(s.id, { recorded: true }).then(() => { setToast("上課記錄已儲存 ✓"); setSRefresh(r => r + 1); }); }, {
       prefill: { studentUid: s.studentUid, studentName: s.studentName, date: s.date, topic: s.moduleTitle || "一對一課程", feedback: s.checkOut?.summary || "", sessionId: s.id },
     });
@@ -3255,25 +3366,21 @@ function CHome({ onSwitch, onModal }) {
         )}
 
         {/* ── 所有學員快速列表 ── */}
-        {!loading && students.length > 0 && unassigned.length === 0 && (
+        {!loading && students.length > 0 && (
           <>
-            <div className="sec-h">所有學員</div>
-            <div className="card" style={{ padding:"4px 14px" }}>
-              {students.slice(0,4).map((s,i) => (
-                <div key={s.uid} className="coach-row" style={i === Math.min(students.length,4)-1 ? {borderBottom:"none"} : {}}>
+            <div className="sec-h">所有學員 · 會員期間</div>
+            <div className="card member-list" style={{ padding:"4px 14px" }}>
+              {students.map((s,i) => (
+                <div key={s.uid} className="coach-row" style={i === students.length-1 ? {borderBottom:"none"} : {}}>
                   <div className="coach-av" style={(() => { const c = getAvatarColor(s.name||""); return { background:c.bg, color:c.text, fontSize:fz(14) }; })()} >{s.name?.slice(0,2)||"??"}</div>
                   <div style={{ flex:1 }}>
                     <div className="coach-name">{s.name}</div>
                     <div className="coach-tag">{s.courseType||"—"}</div>
+                    <MemberLine u={s} />
                   </div>
                   <button className="btn btn-sm" style={{ fontSize:fz(13), padding:"4px 10px" }} onClick={() => onSwitch("assign")}>分配</button>
                 </div>
               ))}
-              {students.length > 4 && (
-                <div style={{ textAlign:"center", fontSize:fz(14), color:"var(--ink-3)", padding:"8px 0", borderTop:"1px solid var(--cream-3)" }}>
-                  共 {students.length} 位學員
-                </div>
-              )}
             </div>
           </>
         )}
@@ -3703,7 +3810,7 @@ function CSchedule({ onSwitch, onModal }) {
   const done = (msg) => { setToast(msg); setRefresh(r => r + 1); };
 
   const writeRecord = (s) => {
-    setSheet(null);
+    setSheet(null); setRefresh(r => r + 1);
     onModal("record", () => { updateSession(s.id, { recorded: true }).then(() => done("上課記錄已儲存 ✓")); }, {
       prefill: { studentUid: s.studentUid, studentName: s.studentName, date: s.date, topic: s.moduleTitle || "一對一課程", feedback: s.checkOut?.summary || "", sessionId: s.id },
     });
@@ -3891,7 +3998,7 @@ function CRecords({ onSwitch, onModal }) {
         )}
       </div>
       {sheet && <SessionSheet s={sheet} viewer="coach" onClose={() => setSheet(null)} onChanged={(m) => { if (m) setToast(m); setRefreshKey(k => k + 1); }}
-        onWriteRecord={(x) => { setSheet(null); onModal("record", () => { updateSession(x.id, { recorded: true }).then(() => { setToast("上課記錄已儲存 ✓"); setRefreshKey(k => k + 1); }); }, {
+        onWriteRecord={(x) => { setSheet(null); setRefreshKey(k => k + 1); onModal("record", () => { updateSession(x.id, { recorded: true }).then(() => { setToast("上課記錄已儲存 ✓"); setRefreshKey(k => k + 1); }); }, {
           prefill: { studentUid: x.studentUid, studentName: x.studentName, date: x.date, topic: x.moduleTitle || "一對一課程", feedback: x.checkOut?.summary || "", sessionId: x.id } }); }} />}
       <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={C_TABS} active="records" onSwitch={onSwitch} />
@@ -4173,7 +4280,7 @@ function AMembers({ onSwitch }) {
   const [editTarget, setEditTarget] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
 
-  const blankForm = { name:"",email:"",email2:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:todayStr(),roles:["student"] };
+  const blankForm = { name:"",email:"",email2:"",password:"",birthdate:"",coachName:"",courseType:"個人賦能班",joinDate:todayStr(),memberStart:todayStr(),memberEnd:"",roles:["student"] };
   const [form, setForm] = useState(blankForm);
 
   const loadMembers = () => {
@@ -4185,6 +4292,7 @@ function AMembers({ onSwitch }) {
   const handleApprove = async e => {
     e.preventDefault();
     if (!form.name) { setResult({ok:false,msg:"姓名為必填。"}); return; }
+    if (memberDateError()) { setResult({ok:false,msg:memberDateError()}); return; }
     setLoading(true); setResult(null);
     const res = await approveAccess(approving, form);
     setLoading(false);
@@ -4195,6 +4303,8 @@ function AMembers({ onSwitch }) {
   useEffect(() => { if(tab==="list") loadMembers(); }, [tab]);
 
   const setField = (k,v) => setForm(f=>({...f,[k]:v}));
+  // 會員到期日不能早於起始日
+  const memberDateError = () => (isStudentForm && form.memberStart && form.memberEnd && form.memberEnd < form.memberStart) ? "會員到期日不能早於會員起始日。" : "";
 
   const handleAdd = async e => {
     e.preventDefault();
@@ -4202,6 +4312,7 @@ function AMembers({ onSwitch }) {
     // 再輸入一次 Email：Email 建立後無法修改，打錯字對方就永遠登入不了
     if (form.email.trim().toLowerCase() !== form.email2.trim().toLowerCase()) { setResult({ok:false,msg:"兩次輸入的 Email 不一樣，請再確認拼字。"}); return; }
     if (form.password.length < 6) { setResult({ok:false,msg:"密碼至少需要 6 個字元。"}); return; }
+    if (memberDateError()) { setResult({ok:false,msg:memberDateError()}); return; }
     setLoading(true); setResult(null);
     const res = await addMember({...form});
     setLoading(false);
@@ -4212,18 +4323,19 @@ function AMembers({ onSwitch }) {
     else setResult({ok:false,msg:res.error === "此 Email 已被使用。" ? "此 Email 已經有登入帳號了。請對方直接用原本的密碼登入並按「送出開通申請」，你再到成員頁的「等待開通」按開通即可。" : res.error});
   };
 
-  const startEdit = m => { setEditTarget(m); setForm({name:m.name||"",email:m.email||"",password:"",birthdate:m.birthdate||"",coachName:m.coachName||"",courseType:m.courseType||"個人賦能班",joinDate:m.joinDate||"",roles:(m.roles && m.roles.length ? m.roles : [m.role||"student"])}); setTab("add"); setResult(null); };
+  const startEdit = m => { setEditTarget(m); setForm({name:m.name||"",email:m.email||"",password:"",birthdate:m.birthdate||"",coachName:m.coachName||"",courseType:m.courseType||"個人賦能班",joinDate:m.joinDate||"",memberStart:memberStartOf(m),memberEnd:memberEndOf(m),roles:(m.roles && m.roles.length ? m.roles : [m.role||"student"])}); setTab("add"); setResult(null); };
 
   const handleEdit = async e => {
     e.preventDefault();
     if (!form.name) { setResult({ok:false,msg:"姓名為必填。"}); return; }
     setLoading(true); setResult(null);
+    if (memberDateError()) { setResult({ok:false,msg:memberDateError()}); return; }
     if (editTarget.uid === profile?.uid && !form.roles.includes("admin")) { setLoading(false); setResult({ok:false,msg:"不能移除自己的管理員身分，否則會無法再管理系統。"}); return; }
     const res = await updateMember(editTarget.uid, isStudentForm
-      ? {name:form.name,birthdate:form.birthdate,coachName:form.coachName,courseType:form.courseType,joinDate:form.joinDate,roles:form.roles}
+      ? {name:form.name,birthdate:form.birthdate,coachName:form.coachName,courseType:form.courseType,memberStart:form.memberStart||"",memberEnd:form.memberEnd||"",joinDate:form.memberStart||form.joinDate||"",roles:form.roles}
       : {name:form.name,joinDate:form.joinDate,roles:form.roles});
     setLoading(false);
-    if (res.success) { setResult({ok:true,msg:`${form.name} 資料已更新！`}); setEditTarget(null); loadMembers(); }
+    if (res.success) { setResult({ok:true,msg:`${form.name} 資料已更新！`}); setEditTarget(null); setTab("list"); loadMembers(); }
     else setResult({ok:false,msg:"更新失敗。"});
   };
 
@@ -4301,7 +4413,8 @@ function AMembers({ onSwitch }) {
                       {mRoles.map(r => { const c = rc(r); return <span key={r} style={{ fontSize:fz(12),fontWeight:700,padding:"2px 7px",borderRadius:"var(--r-pill)",background:c.bg,color:c.color,border:`1px solid ${c.border}` }}>{ROLE_NAME[r]}</span>; })}
                     </div>
                     <div style={{ fontSize:fz(13),color:"var(--ink-3)" }}>{m.email}</div>
-                    {mRoles.includes("student") && m.courseType && <div style={{ fontSize:fz(13),color:"var(--ink-3)",marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
+                    {mRoles.includes("student") && m.courseType && <div style={{ fontSize:fz(13),color:"var(--ink-3)",marginTop:2 }}>{m.courseType}</div>}
+                    {mRoles.includes("student") && <MemberLine u={m} />}
                   </div>
                   <div style={{ display:"flex",gap:6,flexShrink:0 }}>
                     <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:fz(14) }} onClick={() => startEdit(m)}>編輯</button>
@@ -4362,8 +4475,24 @@ function AMembers({ onSwitch }) {
                 <div className="chip-group" style={{ marginBottom:12 }}>
                   {COURSE_TYPES.map(c=><div key={c} className={"chip"+(form.courseType===c?" sel":"")} onClick={()=>setField("courseType",c)}>{c}</div>)}
                 </div>
-                <div className="input-label">加入日期</div>
-                <input className="input-field" type="date" value={form.joinDate} onChange={e=>setField("joinDate",e.target.value)} />
+                <div className="member-box">
+                  <div className="member-box-title">會員期間</div>
+                  <div className="input-label" htmlFor="m-start">會員起始日</div>
+                  <input id="m-start" className="input-field" type="date" value={form.memberStart||""} onChange={e=>setField("memberStart",e.target.value)} />
+                  <div className="input-label">會員到期日</div>
+                  <input id="m-end" className="input-field" type="date" value={form.memberEnd||""} onChange={e=>setField("memberEnd",e.target.value)} />
+                  <div className="chip-group" style={{ marginTop:-4 }}>
+                    {[[3,"3 個月"],[6,"6 個月"],[12,"1 年"]].map(([n,l]) => (
+                      <div key={n} className="chip" onClick={() => setField("memberEnd", addMonthsYmd(form.memberStart||todayStr(), n))}>起始日起 {l}</div>
+                    ))}
+                    {form.memberEnd && <div className="chip" onClick={() => setField("memberEnd","")}>清除到期日</div>}
+                  </div>
+                  <div className="hint" style={{ marginTop:0 }}>
+                    {form.memberEnd
+                      ? <>到期日當天仍可上課；<b>{fmtYmd(form.memberEnd)} 之後</b>，學員與教練都無法再選擇課程時間。</>
+                      : "未設定到期日＝不限制上課期間。"}
+                  </div>
+                </div>
                 <div className="input-label">主要聯絡教練（選填）</div>
                 <input className="input-field" placeholder="留空代表由所有教練共同協助" value={form.coachName} onChange={e=>setField("coachName",e.target.value)} />
               </>

@@ -80,9 +80,22 @@ service cloud.firestore {
           || (before == null && after != null && after.at == request.time && after.by == me());
     }
 
+    // 會員到期日：到期日（含）之前才能排課、預約、確認；沒有設定到期日就不限制
+    function memberEndOk(uid, date) {
+      let path = /databases/$(database)/documents/users/$(uid);
+      return !exists(path) || memberEndAllows(get(path).data, date);
+    }
+    function memberEndAllows(u, date) {
+      return !('memberEnd' in u) || !(u.memberEnd is string) || u.memberEnd == '' || date <= u.memberEnd;
+    }
+    function sessionStudentOk(d) {
+      return d.get('studentUid', '') == '' || memberEndOk(d.studentUid, d.date);
+    }
+
     match /sessions/{sessionId} {
       allow read:   if signedIn();
       allow create: if isCoach() && request.resource.data.coachId == me()
+                    && sessionStudentOk(request.resource.data)
                     && request.resource.data.status in ['open', 'pending']
                     && !('checkIn' in request.resource.data) && !('checkOut' in request.resource.data);
       // 已簽到的課是交付證據，只有管理員能刪
@@ -90,6 +103,9 @@ service cloud.firestore {
       allow update: if isAdmin()
                     || (isCoach() && resource.data.coachId == me()
                         && stampOk('checkIn') && stampOk('checkOut')
+                        // 改了日期或學員 → 必須在學員會員到期日之內
+                        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['date', 'studentUid'])
+                            || sessionStudentOk(request.resource.data))
                         // 簽退前一定要先簽到
                         && (request.resource.data.get('checkOut', null) == null || request.resource.data.get('checkIn', null) != null))
                     // 學員：上課時自己簽到（只能寫 checkIn，且身分標記為 student）
@@ -101,11 +117,13 @@ service cloud.firestore {
                     // 學員：確認或請求改期自己的課
                     || (signedIn() && resource.data.studentUid == me()
                         && request.resource.data.status in ['confirmed', 'reschedule']
+                        && (request.resource.data.status == 'reschedule' || memberEndOk(me(), resource.data.date))
                         && onlyChanges(['status', 'studentNote', 'confirmedAt', 'updatedAt']))
                     // 學員：預約開放時段（只能預約給自己，且只能從 open → confirmed）
                     || (signedIn() && resource.data.status == 'open'
                         && request.resource.data.status == 'confirmed'
                         && request.resource.data.studentUid == me()
+                        && memberEndOk(me(), resource.data.date)
                         && onlyChanges(['status', 'studentUid', 'studentName', 'confirmedAt', 'updatedAt']));
 
       // 上課證明照片：該堂課的教練、學員、管理員可看；教練在簽退前可新增／刪除

@@ -16,6 +16,7 @@ import { auth, db } from "./firebase";
 import { normalizeCourse, initialJourney, advanceUpdate, setStageUpdate, mKey, stageOf } from "./journey";
 import { notify, rebindPush, unbindPushOnLogout } from "./push";
 import { todayStr } from "./schedule";
+import { canUseDate, datesAfterEnd, expiredMessage } from "./membership";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
@@ -52,7 +53,7 @@ async function notifyNow(type, payload) {
     ]);
   } catch {}
 }
-const STUDENT_FIELDS = ["courseType", "coachName", "birthdate"];
+const STUDENT_FIELDS = ["courseType", "coachName", "birthdate", "memberStart", "memberEnd"];
 
 /* 課程模組排序：手動排序（order）優先，其次依名稱（「第 2 堂」排在「第 10 堂」前面） */
 export function sortModules(list) {
@@ -146,7 +147,7 @@ export function AuthProvider({ children }) {
      成員管理（管理員）
   ════════════════════════════════════════ */
   const addMember = async (formData) => {
-    const { name, email, password, birthdate, coachName, courseType, joinDate } = formData;
+    const { name, email, password, birthdate, coachName, courseType, joinDate, memberStart, memberEnd } = formData;
     const list = rolesOf({ roles: formData.roles, role: formData.role });
     const r = list[0];
     try {
@@ -163,7 +164,9 @@ export function AuthProvider({ children }) {
         data.birthdate  = birthdate  || "";
         data.coachName  = coachName  || "";
         data.courseType = courseType || "";
-        data.joinDate   = joinDate   || "";
+        data.memberStart = memberStart || joinDate || "";
+        data.memberEnd   = memberEnd   || "";
+        data.joinDate    = data.memberStart;
       }
       await setDoc(doc(db, "users", uid), data);
       // 學員一建立就開通成長路徑
@@ -540,8 +543,23 @@ export function AuthProvider({ children }) {
      排課行事曆（sessions）
      status：open 可預約 | pending 待確認 | confirmed 已排定 | reschedule 請求改期
   ════════════════════════════════════════ */
+  // 會員到期檢查：學員的到期日之後不能排課／預約／確認
+  const studentDoc = async (uid) => {
+    if (!uid) return null;
+    if (uid === auth.currentUser?.uid && profile) return profile;
+    try { const snap = await getDoc(doc(db, "users", uid)); return snap.exists() ? snap.data() : null; } catch { return null; }
+  };
+  const expiredFor = async (uid, dates) => {
+    const u = await studentDoc(uid);
+    const bad = u ? datesAfterEnd(u, dates.filter(Boolean)) : [];
+    return bad.length ? { success: false, error: expiredMessage(u, uid === auth.currentUser?.uid ? "你的" : `${u.name || "此學員"}的`), expired: true } : null;
+  };
+
   const addSessions = async (list) => {
     try {
+      const byStudent = {};
+      list.forEach(d => { if (d.studentUid) (byStudent[d.studentUid] ||= []).push(d.date); });
+      for (const [uid, dates] of Object.entries(byStudent)) { const bad = await expiredFor(uid, dates); if (bad) return bad; }
       const batch = writeBatch(db);
       const ids = [];
       list.forEach(data => {
@@ -561,6 +579,13 @@ export function AuthProvider({ children }) {
   };
 
   const updateSession = async (id, data) => {
+    // 改了日期或學員時，才檢查會員到期日（不影響已排好的課簽到、簽退、寫備註）
+    if (data.date && data.studentUid) {
+      const cur = await fetchSession(id);
+      if (!cur || cur.date !== data.date || (cur.studentUid || "") !== data.studentUid) {
+        const bad = await expiredFor(data.studentUid, [data.date]); if (bad) return bad;
+      }
+    }
     try { await updateDoc(doc(db, "sessions", id), { ...data, updatedAt: serverTimestamp() }); return { success: true }; }
     catch (e) { return { success: false, error: e.message }; }
   };
@@ -593,6 +618,8 @@ export function AuthProvider({ children }) {
 
   // 學員確認教練排定的時段 → 已排定
   const confirmSession = async (id) => {
+    const cur = await fetchSession(id);
+    if (cur) { const bad = await expiredFor(auth.currentUser?.uid, [cur.date]); if (bad) return bad; }
     const r = await updateSession(id, { status: "confirmed", studentNote: "", confirmedAt: serverTimestamp() });
     if (r.success) notify("session_confirmed", { id });
     return r;
@@ -612,6 +639,7 @@ export function AuthProvider({ children }) {
         const ref  = doc(db, "sessions", id);
         const snap = await tx.get(ref);
         if (!snap.exists() || snap.data().status !== "open") throw new Error("taken");
+        if (!canUseDate(profile, snap.data().date)) throw new Error("expired");
         tx.update(ref, {
           status:      "confirmed",
           studentUid:  auth.currentUser?.uid || "",
@@ -623,7 +651,7 @@ export function AuthProvider({ children }) {
       notify("session_booked", { id });
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message === "taken" ? "這個時段剛被預約走了，請選擇其他時段。" : "預約失敗，請再試一次。" };
+      return { success: false, error: e.message === "taken" ? "這個時段剛被預約走了，請選擇其他時段。" : e.message === "expired" ? expiredMessage(profile) : "預約失敗，請再試一次。" };
     }
   };
 
@@ -788,7 +816,11 @@ export function AuthProvider({ children }) {
       const list = rolesOf({ roles: formData.roles });
       const r = list[0];
       const data = { name: formData.name || req.name || "", email: req.email, role: r, roles: list, isAdmin: list.includes("admin"), createdAt: serverTimestamp(), status: "active" };
-      if (r === "student") Object.assign(data, { birthdate: formData.birthdate || "", coachName: formData.coachName || "", courseType: formData.courseType || "", joinDate: formData.joinDate || todayStr() });
+      if (r === "student") {
+        const start = formData.memberStart || formData.joinDate || todayStr();
+        Object.assign(data, { birthdate: formData.birthdate || "", coachName: formData.coachName || "", courseType: formData.courseType || "",
+          memberStart: start, memberEnd: formData.memberEnd || "", joinDate: start });
+      }
       const batch = writeBatch(db);
       batch.set(doc(db, "users", req.id), data);
       if (r === "student") batch.set(doc(db, "journeys", req.id), { ...initialJourney({ uid: req.id, name: data.name, courseType: data.courseType }), updatedAt: serverTimestamp() });
