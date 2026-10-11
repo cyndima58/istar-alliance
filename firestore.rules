@@ -57,8 +57,11 @@ service cloud.firestore {
     match /records/{recordId} {
       allow read:   if isCoachOrAdmin()
                     || (signedIn() && resource.data.studentUid == me() && resource.data.visibleStudent == true);
-      allow create: if isCoachOrAdmin();
-      allow update, delete: if isAdmin() || (isCoach() && resource.data.coachId == me());
+      // 私密備註「絕對」不能寫進學員讀得到的 records，只能放在 recordNotes
+      allow create: if isCoachOrAdmin() && !('privateNote' in request.resource.data);
+      allow update: if (isAdmin() || (isCoach() && resource.data.coachId == me()))
+                    && !('privateNote' in request.resource.data);
+      allow delete: if isAdmin() || (isCoach() && resource.data.coachId == me());
     }
 
     // ── 教練私密備註（學員完全無法讀取）──
@@ -93,7 +96,9 @@ service cloud.firestore {
     }
 
     match /sessions/{sessionId} {
-      allow read:   if signedIn();
+      // 學員只能讀自己的課與開放預約的時段（看不到別的學員的課、教練寫的課堂摘要）
+      allow read:   if isCoachOrAdmin()
+                    || (signedIn() && (resource.data.studentUid == me() || resource.data.status == 'open'));
       allow create: if isCoach() && request.resource.data.coachId == me()
                     && sessionStudentOk(request.resource.data)
                     && request.resource.data.status in ['open', 'pending']
