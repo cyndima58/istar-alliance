@@ -821,6 +821,41 @@ button, input, select, textarea { font-family: var(--font); }
 .po-amt { font-family: var(--font-display); font-size: calc(28px * var(--fs)); font-weight: 600; margin-top: 6px; }
 .btn.danger { background: var(--rust); color: #fff; border-color: var(--rust); }
 .req-row { display:flex; align-items:center; gap:8px; padding: 10px 0; border-top: 1px solid rgba(138,90,16,.15); }
+
+/* 課程模組分組 */
+.mg { background:#fff; border:1px solid var(--cream-3); border-left:4px solid; border-radius: var(--r-lg); margin-bottom:10px; overflow:hidden; }
+.mg-head { display:flex; align-items:center; gap:8px; padding-right:10px; }
+.mg-toggle { flex:1; display:flex; align-items:center; gap:10px; min-height:56px; padding: 10px 14px; border:none; background:none; cursor:pointer; text-align:left; color: var(--ink); }
+.mg-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.mg-name { font-size: calc(18px * var(--fs)); font-weight:700; }
+.mg-n { font-size: calc(14px * var(--fs)); color: var(--ink-3); }
+.mg-chev { margin-left:auto; font-size: calc(18px * var(--fs)); color: var(--ink-3); }
+.mg-list { border-top:1px solid var(--cream-3); padding: 4px 10px 10px; }
+.mg-row { display:flex; align-items:center; gap:10px; width:100%; padding: 12px 4px; border:none; border-bottom:1px solid var(--cream-3); background:none; text-align:left; cursor:pointer; color: var(--ink); min-height:52px; }
+.mg-row:last-of-type { border-bottom:none; }
+.mg-row.sorting { cursor:default; background: var(--cream-2); border-radius: var(--r); margin-top:4px; border-bottom:none; padding: 8px; }
+.mg-idx { width:26px; height:26px; border-radius:50%; background: var(--cream-2); color: var(--ink-3); display:flex; align-items:center; justify-content:center; font-size: calc(13px * var(--fs)); font-weight:700; flex-shrink:0; }
+.mg-title { display:block; flex:1; font-size: calc(16px * var(--fs)); font-weight:600; line-height:1.4; }
+.mg-sub { display:block; font-size: calc(13px * var(--fs)); color: var(--ink-3); margin-top:2px; }
+.mg-go { color: var(--ink-4); font-size: calc(20px * var(--fs)); }
+.usage { display:grid; grid-template-columns: repeat(3,1fr); gap:6px; background: var(--cream-2); border-radius: var(--r-lg); padding: 12px; margin-bottom: 12px; text-align:center; }
+.usage b { display:block; font-size: calc(22px * var(--fs)); font-family: var(--font-display); }
+.usage span { font-size: calc(13px * var(--fs)); color: var(--ink-3); }
+.adm-acts { display:grid; gap:8px; margin-bottom: 6px; }
+.danger-zone { margin-top: 18px; padding-top: 12px; border-top: 1px dashed var(--cream-4); }
+
+/* 標誌 */
+.wordmark { display:inline-flex; align-items:baseline; gap:.45em; font-family: var(--font-display); white-space:nowrap; line-height:1; }
+.wm-istar { font-size: 30px; font-weight:600; letter-spacing:.04em; color: var(--ink); }
+.wm-i { color: var(--gold); }
+.wm-all { font-size: 13px; font-weight:600; letter-spacing:.32em; color: var(--gold); }
+.wordmark.sm .wm-istar { font-size: 21px; }
+.wordmark.sm .wm-all { font-size: 11px; letter-spacing:.26em; }
+@media (max-width: 440px) { .app-header .wm-all { display:none; } }
+.login-logo { font-size: 0; margin-bottom: 14px; }
+.login-brand { margin-bottom: 8px; text-transform: none; letter-spacing: 0; }
+.login-brand .wm-istar { color: var(--ink); font-size: 36px; }
+.login-brand .wm-i, .login-brand .wm-all { color: var(--gold); }
 /* 減少動態效果（系統設定開啟時） */
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 `;
@@ -880,6 +915,19 @@ function getCoachModuleColor(coachId = "") {
 /* ════════════════════════════════════════
    SHARED COMPONENTS
 ════════════════════════════════════════ */
+
+/* ── iSTAR Alliance 標誌：五位夥伴手牽手組成一顆星（沿用原本概念，改成 App 的金、綠、藍、紅配色）── */
+function LogoMark({ size = 28, style }) {
+  return <svg viewBox="0 0 512 512" width={size} height={size} style={style} aria-hidden="true"><path d="M263.5 81.0 L303.0 191.3 L420.1 194.8" fill="none" stroke="#86672C" strokeWidth="40" strokeLinecap="round" strokeLinejoin="round"/><circle cx="341.8" cy="137.9" r="28" fill="#86672C"/><path d="M424.8 209.1 L332.1 280.7 L364.9 393.2" fill="none" stroke="#3F6E4E" strokeWidth="40" strokeLinecap="round" strokeLinejoin="round"/><circle cx="394.9" cy="301.1" r="28" fill="#3F6E4E"/><path d="M352.8 402.0 L256.0 336.0 L159.2 402.0" fill="none" stroke="#3A4A6B" strokeWidth="40" strokeLinecap="round" strokeLinejoin="round"/><circle cx="256.0" cy="402.0" r="28" fill="#3A4A6B"/><path d="M147.1 393.2 L179.9 280.7 L87.2 209.1" fill="none" stroke="#8B3A2A" strokeWidth="40" strokeLinecap="round" strokeLinejoin="round"/><circle cx="117.1" cy="301.1" r="28" fill="#8B3A2A"/><path d="M91.9 194.8 L209.0 191.3 L248.5 81.0" fill="none" stroke="#B8913F" strokeWidth="40" strokeLinecap="round" strokeLinejoin="round"/><circle cx="170.2" cy="137.9" r="28" fill="#B8913F"/></svg>;
+}
+function Wordmark({ small }) {
+  return (
+    <span className={"wordmark" + (small ? " sm" : "")}>
+      <span className="wm-istar"><span className="wm-i">i</span>STAR</span>
+      <span className="wm-all">ALLIANCE</span>
+    </span>
+  );
+}
 
 function Starfield() {
   const ref = useRef(null);
@@ -2620,7 +2668,7 @@ function SHome({ onSwitch }) {
     fetchAssignment(profile.uid).then(async (ids) => {
       if (!ids.length) return;
       const mods = await fetchModules();
-      const assigned = mods.filter(m => ids.includes(m.id));
+      const assigned = mods.filter(m => ids.includes(m.id) && m.status !== "hidden");
       if (assigned.length) setNextModule(assigned[0]);
     }).catch(() => {});
   }, [profile?.uid, refresh]);
@@ -2817,7 +2865,7 @@ function SCourses({ onSwitch }) {
     fetchAssignment(profile.uid).then(async ids => {
       if (!ids.length) { setModules([]); return; }
       const all = await fetchModules();
-      setModules(all.filter(m => ids.includes(m.id)));
+      setModules(all.filter(m => ids.includes(m.id) && m.status !== "hidden"));
     }).catch(() => {});
   }, [profile?.uid]);
 
@@ -2923,7 +2971,7 @@ function SGrowth({ onSwitch }) {
     fetchAssignment(profile.uid).then(async ids => {
       if (!ids.length) return;
       const all = await fetchModules();
-      setModules(all.filter(m => ids.includes(m.id)));
+      setModules(all.filter(m => ids.includes(m.id) && m.status !== "hidden"));
     }).catch(() => {});
   }, [profile?.uid]);
 
@@ -3319,36 +3367,93 @@ function CHome({ onSwitch, onModal }) {
   );
 }
 
-function ModuleCard({ m, isOwn, onOpen }) {
-  const { fetchModuleResources } = useAuth();
-  const [count, setCount] = useState(null);
-  useEffect(() => { fetchModuleResources(m.id).then(l => setCount(l.length)).catch(() => {}); }, [m.id, m._v]);
-  const color = getCoachModuleColor(m.coachId || m.coachName || "");
-  return (
-    <button className="mod-tile" onClick={() => onOpen(m)} style={{
-      background: isOwn ? color.bg : "#fff", borderColor: isOwn ? color.border : "var(--cream-3)", borderLeftColor: color.border }}>
-      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
-        <span className="cal-dot" style={{ background: color.border, width:7, height:7 }} />
-        <span style={{ fontSize:fz(13), color: color.border, fontWeight:700 }}>{m.coachName || "—"}</span>
-        {isOwn && <span className="mod-mine" style={{ color: color.border, borderColor: color.border }}>我的</span>}
+/* ════════════════════════════════════════
+   課程模組：依教練分組（可收合）＋手動排序
+   教練：可排序自己的模組；管理員：可排序所有人的模組
+════════════════════════════════════════ */
+const OPEN_KEY = "istar.moduleGroups";
+function useOpenGroups(defaults) {
+  const [open, setOpen] = useState(() => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) || "null") || defaults; } catch { return defaults; } });
+  const toggle = (k) => setOpen(o => { const n = { ...o, [k]: !o[k] }; try { localStorage.setItem(OPEN_KEY, JSON.stringify(n)); } catch {} return n; });
+  return [open, toggle];
+}
+
+function ModuleGroups({ modules, meUid, canSortAll, onOpen, onSaved, showStatus, emptyText = "目前沒有課程模組" }) {
+  const { reorderModules } = useAuth();
+  const groups = [];
+  modules.forEach(m => {
+    const k = m.coachId || m.coachName || "—";
+    let g = groups.find(x => x.key === k);
+    if (!g) groups.push(g = { key: k, name: m.coachName || "—", list: [] });
+    g.list.push(m);
+  });
+  // 自己的排第一，其餘依名字
+  groups.sort((a, b) => (b.key === meUid) - (a.key === meUid) || a.name.localeCompare(b.name, "zh-Hant"));
+  const [open, toggle] = useOpenGroups(meUid ? { [meUid]: true } : {});
+  const [sorting, setSorting] = useState("");      // 正在排序的教練 key
+  const [draft,   setDraft]   = useState([]);
+  const [busy,    setBusy]    = useState(false);
+  const isOpen = (k) => open[k] ?? (k === meUid);
+
+  const startSort = (g) => { setSorting(g.key); setDraft(g.list.map(m => m.id)); if (!isOpen(g.key)) toggle(g.key); };
+  const move = (i, d) => setDraft(arr => { const a = [...arr]; const j = i + d; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; });
+  const saveSort = async () => { setBusy(true); const r = await reorderModules(draft); setBusy(false); setSorting(""); onSaved?.(r.success ? "排序已儲存 ✓" : "排序儲存失敗"); };
+
+  if (!groups.length) return <div className="card empty">{emptyText}</div>;
+  return groups.map(g => {
+    const color = getCoachModuleColor(g.key);
+    const mine = g.key === meUid;
+    const canSort = canSortAll || mine;
+    const opened = isOpen(g.key);
+    const list = sorting === g.key ? draft.map(id => g.list.find(m => m.id === id)).filter(Boolean) : g.list;
+    return (
+      <div key={g.key} className={"mg" + (opened ? " open" : "")} style={{ borderLeftColor: color.border }}>
+        <div className="mg-head">
+          <button className="mg-toggle" onClick={() => sorting !== g.key && toggle(g.key)} aria-expanded={opened}>
+            <span className="mg-dot" style={{ background: color.border }} />
+            <span className="mg-name">{g.name}{mine ? "（我）" : ""}</span>
+            <span className="mg-n">{g.list.length} 個模組</span>
+            <span className="mg-chev">{opened ? "▾" : "▸"}</span>
+          </button>
+          {canSort && opened && g.list.length > 1 && sorting !== g.key && <button className="btn btn-sm" onClick={() => startSort(g)}>⇅ 排序</button>}
+        </div>
+        {opened && (
+          <div className="mg-list">
+            {list.map((m, i) => sorting === g.key ? (
+              <div key={m.id} className="mg-row sorting">
+                <span className="mg-idx">{i + 1}</span>
+                <span className="mg-title">{m.title}</span>
+                <button className="res-act" disabled={i === 0} onClick={() => move(i, -1)} aria-label="上移">↑</button>
+                <button className="res-act" disabled={i === list.length - 1} onClick={() => move(i, 1)} aria-label="下移">↓</button>
+              </div>
+            ) : (
+              <button key={m.id} className="mg-row" onClick={() => onOpen(m)}>
+                <span className="mg-idx">{i + 1}</span>
+                <span style={{ flex:1, minWidth:0 }}>
+                  <span className="mg-title">{m.title}</span>
+                  <span className="mg-sub">
+                    {(m.stage || []).join("・")}{m.duration ? ` · ⏱ ${m.duration}` : ""}
+                  </span>
+                </span>
+                {showStatus && m.status === "hidden" && <span className="attend-pill" style={{ background:"var(--cream-3)", color:"var(--ink-3)" }}>已下架</span>}
+                <span className="mg-go">›</span>
+              </button>
+            ))}
+            {sorting === g.key && (
+              <div className="btn-row" style={{ marginTop:8 }}>
+                <button className="btn btn-sm" onClick={() => setSorting("")}>取消</button>
+                <button className="btn btn-sm btn-primary" disabled={busy} onClick={saveSort}>{busy ? "儲存中…" : "儲存排序"}</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      <div className="mod-title">{m.title}</div>
-      {m.outline && <div className="mod-outline mod-clamp">{m.outline}</div>}
-      <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:8 }}>
-        {(m.stage||[]).map(s => <span key={s} className="badge" style={{ background:"rgba(255,255,255,.75)", color: color.border, border:`1px solid ${color.border}`, fontSize:fz(12) }}>{s}</span>)}
-        {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(12) }}>⏱ {m.duration}</span>}
-      </div>
-      <div className="mod-foot">
-        <span>📎 {count == null ? "…" : count} 份學習資料</span>
-        <span style={{ color: color.border }}>{isOwn ? "管理資料 →" : "查看 →"}</span>
-      </div>
-    </button>
-  );
+    );
+  });
 }
 
 function CModules({ onSwitch, onModal }) {
   const { profile, fetchModules, deleteModule } = useAuth();
-  const [tab,        setTab]        = useState("mine");   // "mine" | "all"
   const [modules,    setModules]    = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -3366,13 +3471,12 @@ function CModules({ onSwitch, onModal }) {
   }, [refreshKey, profile?.uid]);
 
   const myModules  = modules.filter(m => m.coachId === profile?.uid);
-  const allModules = modules.filter(m => m.coachId !== profile?.uid);
   const sheet = modules.find(m => m.id === sheetId);
 
   // 新增完成後直接打開模組，接著加學習資料
   const handleModal  = () => onModal("module", (r) => {
     setRefreshKey(k => k + 1);
-    if (r?.id) { setTab("mine"); setSheetId(r.id); setToast("模組已建立，接著加入學習資料吧"); }
+    if (r?.id) { setSheetId(r.id); setToast("模組已建立，接著加入學習資料吧"); }
   });
   const handleDelete = async (id) => {
     await deleteModule(id);
@@ -3380,34 +3484,27 @@ function CModules({ onSwitch, onModal }) {
     setRefreshKey(k => k + 1);
   };
 
-  const displayList = tab === "mine" ? myModules : allModules;
-
   return (
     <div className="screen-enter">
       <div className="topbar">
         <div className="topbar-title">課程模組</div>
-        {tab === "mine" && <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增</button>}
+        <button className="btn btn-primary btn-sm" onClick={handleModal}><IcPlus />新增模組</button>
       </div>
 
-      <div className="inner-tabs" style={{ padding:"0 16px" }}>
-        <button className={"inner-tab"+(tab==="mine"?" active":"")} onClick={() => setTab("mine")}>
-          我的課程 {!loading && <span style={{ fontSize:fz(12), marginLeft:4, opacity:.7 }}>({myModules.length})</span>}
-        </button>
-        <button className={"inner-tab"+(tab==="all"?" active":"")} onClick={() => setTab("all")}>
-          聯盟課程 {!loading && <span style={{ fontSize:fz(12), marginLeft:4, opacity:.7 }}>({allModules.length})</span>}
-        </button>
-      </div>
-
-      <div className="content" style={{ paddingTop:10 }}>
-        {loading ? <div className="empty">載入中…</div>
-          : displayList.length === 0 ? (
-            <div className="empty" style={{ marginTop:24 }}>
-              {tab === "mine"
-                ? <><span>尚未建立課程模組</span><br/>
-                    <button className="btn" style={{ marginTop:16 }} onClick={handleModal}><IcPlus />新增第一個課程模組</button></>
-                : <span style={{ }}>其他教練目前尚無課程模組</span>}
-            </div>
-          ) : displayList.map(m => <ModuleCard key={m.id} m={m} isOwn={tab === "mine"} onOpen={(x) => setSheetId(x.id)} />)}
+      <div className="content" style={{ paddingTop:6 }}>
+        {loading ? <div className="empty">載入中…</div> : (
+          <>
+            {myModules.length === 0 && (
+              <div className="card empty" style={{ marginBottom:12 }}>
+                你還沒有建立課程模組<br/>
+                <button className="btn" style={{ marginTop:12 }} onClick={handleModal}><IcPlus />新增第一個課程模組</button>
+              </div>
+            )}
+            <div className="hint" style={{ margin:"0 2px 10px" }}>點教練名字可展開／收合；你的模組可按「⇅ 排序」調整順序，學員看到的順序也會跟著改。</div>
+            <ModuleGroups modules={modules.filter(m => m.status !== "hidden" || m.coachId === profile?.uid)} meUid={profile?.uid}
+              onOpen={(x) => setSheetId(x.id)} onSaved={(msg) => { setToast(msg); setRefreshKey(k => k + 1); }} showStatus />
+          </>
+        )}
       </div>
 
       {sheet && (
@@ -3441,7 +3538,7 @@ function AssignPanel() {
     fetchMembers().then(all => setStudents(all.filter(m => m.role === "student"))).catch(() => {});
     // 只載入自己的課程模組
     fetchModules().then(all => {
-      setModulePool(all.filter(m => m.coachId === profile.uid));
+      setModulePool(all.filter(m => m.coachId === profile.uid && m.status !== "hidden"));
     }).catch(() => {});
   }, [profile?.uid]);
 
@@ -3801,8 +3898,8 @@ function LoginScreen() {
   return (
     <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, overflowY:"auto" }}>
       <div className="login-wrap">
-        <div className="login-logo">✦</div>
-        <div className="login-brand">iSTAR <span>Alliance</span></div>
+        <div className="login-logo"><LogoMark size={96} /></div>
+        <div className="login-brand"><Wordmark /></div>
         <div className="login-sub">星辰聯盟 · 學員成長平台</div>
         <div className="login-card">
           {error && <div className="login-error" role="alert">{error}</div>}
@@ -3853,7 +3950,7 @@ function NoAccessScreen({ user, logout }) {
   };
   return (
     <div className="content" style={{ display:"flex", flexDirection:"column", alignItems:"center", paddingTop:36 }}>
-      <div style={{ fontFamily:"var(--font-display)", fontSize:fz(42), color:"var(--gold)", marginBottom:10 }}>✦</div>
+      <div style={{ marginBottom:10 }}><LogoMark size={64} /></div>
       <div style={{ fontSize:fz(22), fontWeight:700, marginBottom:8 }}>帳號尚未開通</div>
       <div style={{ fontSize:fz(15), color:"var(--ink-3)", textAlign:"center", lineHeight:1.7, marginBottom:20 }}>
         你已成功登入 <b style={{ color:"var(--ink)" }}>{user?.email}</b><br />但這個帳號還沒有加入星辰聯盟的成員名單。
@@ -4037,7 +4134,7 @@ function AHome({ onSwitch }) {
 
 function AMembers({ onSwitch }) {
   // 與 CMembers 相同邏輯，管理員版
-  const { addMember, fetchMembers, updateMember, deleteMember, profile, fetchAccessRequests, approveAccess, rejectAccess } = useAuth();
+  const { addMember, fetchMembers, updateMember, deleteMember, cleanupStaffFields, profile, fetchAccessRequests, approveAccess, rejectAccess } = useAuth();
   const [members,    setMembers]    = useState([]);
   const [requests,   setRequests]   = useState([]);
   const [approving,  setApproving]  = useState(null);   // 正在開通的申請
@@ -4051,7 +4148,8 @@ function AMembers({ onSwitch }) {
   const [form, setForm] = useState(blankForm);
 
   const loadMembers = () => {
-    fetchMembers().then(setMembers).catch(() => {});
+    // 順便清掉教練／管理員身上殘留的學員欄位（例如「個人賦能班」）
+    fetchMembers().then(async ms => { setMembers(ms); if (await cleanupStaffFields(ms)) fetchMembers().then(setMembers); }).catch(() => {});
     fetchAccessRequests().then(rs => setRequests(rs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)))).catch(() => {});
   };
   const startApprove = (r) => { setApproving(r); setEditTarget(null); setForm({ ...blankForm, name: r.name || "", roles:["student"] }); setTab("add"); setResult(null); };
@@ -4092,7 +4190,9 @@ function AMembers({ onSwitch }) {
     if (!form.name) { setResult({ok:false,msg:"姓名為必填。"}); return; }
     setLoading(true); setResult(null);
     if (editTarget.uid === profile?.uid && !form.roles.includes("admin")) { setLoading(false); setResult({ok:false,msg:"不能移除自己的管理員身分，否則會無法再管理系統。"}); return; }
-    const res = await updateMember(editTarget.uid, {name:form.name,birthdate:form.birthdate,coachName:form.coachName,courseType:form.courseType,joinDate:form.joinDate,roles:form.roles});
+    const res = await updateMember(editTarget.uid, isStudentForm
+      ? {name:form.name,birthdate:form.birthdate,coachName:form.coachName,courseType:form.courseType,joinDate:form.joinDate,roles:form.roles}
+      : {name:form.name,joinDate:form.joinDate,roles:form.roles});
     setLoading(false);
     if (res.success) { setResult({ok:true,msg:`${form.name} 資料已更新！`}); setEditTarget(null); loadMembers(); }
     else setResult({ok:false,msg:"更新失敗。"});
@@ -4166,7 +4266,7 @@ function AMembers({ onSwitch }) {
                       {mRoles.map(r => { const c = rc(r); return <span key={r} style={{ fontSize:fz(12),fontWeight:700,padding:"2px 7px",borderRadius:"var(--r-pill)",background:c.bg,color:c.color,border:`1px solid ${c.border}` }}>{ROLE_NAME[r]}</span>; })}
                     </div>
                     <div style={{ fontSize:fz(13),color:"var(--ink-3)" }}>{m.email}</div>
-                    {m.courseType && <div style={{ fontSize:fz(13),color:"var(--ink-3)",marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
+                    {mRoles.includes("student") && m.courseType && <div style={{ fontSize:fz(13),color:"var(--ink-3)",marginTop:2 }}>{m.courseType}{m.joinDate?" · "+m.joinDate:""}</div>}
                   </div>
                   <div style={{ display:"flex",gap:6,flexShrink:0 }}>
                     <button className="btn btn-sm" style={{ padding:"5px 10px",fontSize:fz(14) }} onClick={() => startEdit(m)}>編輯</button>
@@ -4244,127 +4344,168 @@ function AMembers({ onSwitch }) {
   );
 }
 
+/* 管理員：單一模組的完整管理 */
+function AdminModuleSheet({ m, coaches, students, onClose, onChanged, onEdit }) {
+  const { updateModule, transferModule, deleteModule, fetchModuleUsage } = useAuth();
+  const [usage,    setUsage]    = useState(null);
+  const [panel,    setPanel]    = useState("");      // "" | "transfer" | "delete"
+  const [toCoach,  setToCoach]  = useState("");
+  const [typed,    setTyped]    = useState("");
+  const [busy,     setBusy]     = useState(false);
+  const [msg,      setMsg]      = useState("");
+  const color = getCoachModuleColor(m.coachId || "");
+  const hidden = m.status === "hidden";
+  useEffect(() => { fetchModuleUsage(m.id).then(setUsage); }, [m.id]);
+  const names = (usage?.studentUids || []).map(uid => students.find(s => s.uid === uid)?.name || "（已刪除的學員）");
+  const upcoming = (usage?.sessions || []).filter(x => !isPast(x)).length;
+
+  const run = async (fn, okMsg, close) => {
+    setBusy(true); setMsg("");
+    const r = await fn();
+    setBusy(false);
+    if (r.success) { onChanged(okMsg); if (close) onClose(); else setPanel(""); }
+    else setMsg("操作失敗：" + (/permission/i.test(r.error || "") ? "沒有權限" : "請再試一次"));
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-sheet" style={{ maxHeight:"94%" }}>
+        <div className="modal-handle" />
+        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+          <span className="cal-dot" style={{ background: color.border, width:8, height:8 }} />
+          <span style={{ fontSize:fz(15), color: color.border, fontWeight:700 }}>{m.coachName || "—"} 教練</span>
+          <span className="attend-pill" style={hidden ? { background:"var(--cream-3)", color:"var(--ink-3)" } : { background:"#E3F1E7", color:"#2F6B45" }}>{hidden ? "已下架" : "上架中"}</span>
+        </div>
+        <div className="modal-title" style={{ marginBottom:8 }}>{m.title}</div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
+          {(m.stage || []).map(x => <span key={x} className="badge" style={{ background: color.bg, color: color.border, border:`1px solid ${color.border}` }}>{x}</span>)}
+          {m.duration && <span className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)" }}>⏱ {m.duration}</span>}
+          {(m.method || []).map(x => <span key={x} className="badge" style={{ background:"var(--cream-2)", color:"var(--ink-3)", border:"1px solid var(--cream-3)" }}>{x}</span>)}
+        </div>
+        {m.outline && <div style={{ fontSize:fz(16), color:"var(--ink-2)", lineHeight:1.7, whiteSpace:"pre-wrap", marginBottom:12 }}>{m.outline}</div>}
+
+        {/* 使用狀況 */}
+        <div className="usage">
+          <div><b>{usage ? names.length : "…"}</b><span>位學員已分配</span></div>
+          <div><b>{usage ? upcoming : "…"}</b><span>堂即將上課</span></div>
+          <div><b>{usage ? usage.resources : "…"}</b><span>份學習資料</span></div>
+        </div>
+        {names.length > 0 && <div className="hint" style={{ marginTop:-4, marginBottom:12 }}>分配給：{names.join("、")}</div>}
+
+        {msg && <div className="login-error">{msg}</div>}
+
+        {/* 主要操作 */}
+        {!panel && (
+          <div className="adm-acts">
+            <button className="btn" onClick={() => onEdit(m)}>✎ 編輯課程資訊</button>
+            <button className="btn" disabled={busy} onClick={() => run(() => updateModule(m.id, { status: hidden ? "published" : "hidden" }), hidden ? "已重新上架" : "已下架，學員暫時看不到這個模組")}>
+              {hidden ? "↑ 重新上架" : "↓ 下架（暫停使用）"}
+            </button>
+            <button className="btn" onClick={() => { setPanel("transfer"); setToCoach(""); }}>⇄ 轉移給其他教練</button>
+          </div>
+        )}
+        {panel === "transfer" && (
+          <div className="alert-card" style={{ background:"var(--slate-pale)", borderColor:"rgba(58,74,107,.2)" }}>
+            <div className="alert-t" style={{ color:"var(--slate)" }}>轉移給其他教練</div>
+            <div className="alert-s">學習資料、學員分配都會跟著模組一起轉移，新教練可以編輯。</div>
+            <select className="input-field" value={toCoach} onChange={e => setToCoach(e.target.value)} aria-label="選擇新教練">
+              <option value="">選擇新教練</option>
+              {coaches.filter(c => c.uid !== m.coachId).map(c => <option key={c.uid} value={c.uid}>{c.name}</option>)}
+            </select>
+            <div className="btn-row" style={{ marginTop:0 }}>
+              <button className="btn btn-sm" onClick={() => setPanel("")}>取消</button>
+              <button className="btn btn-sm btn-primary" disabled={!toCoach || busy}
+                onClick={() => { const c = coaches.find(x => x.uid === toCoach); run(() => transferModule(m.id, c), `已轉移給 ${c.name}`, true); }}>確認轉移</button>
+            </div>
+          </div>
+        )}
+
+        <div className="sec-h">學習資料</div>
+        <ResourceManager moduleId={m.id} canManage canAdd />
+
+        {/* 危險操作：收在最下面，要輸入確認 */}
+        <div className="danger-zone">
+          {panel !== "delete" ? (
+            <button className="link-btn" style={{ color:"var(--rust)" }} onClick={() => { setPanel("delete"); setTyped(""); }}>刪除這個模組…</button>
+          ) : (
+            <>
+              <div className="alert-t" style={{ color:"var(--rust)" }}>永久刪除「{m.title}」</div>
+              <div className="alert-s">
+                會一併刪除 {usage?.resources ?? 0} 份學習資料，並從 {names.length} 位學員的課程中移除，無法復原。
+                {upcoming > 0 && ` 還有 ${upcoming} 堂排定的課使用這個模組（課程時段會保留）。`}
+                如果只是暫時不用，建議改用「下架」。
+              </div>
+              <label className="input-label" htmlFor="del-confirm">請輸入「刪除」確認</label>
+              <input id="del-confirm" className="input-field" value={typed} onChange={e => setTyped(e.target.value)} placeholder="刪除" />
+              <div className="btn-row" style={{ marginTop:0 }}>
+                <button className="btn btn-sm" onClick={() => setPanel("")}>取消</button>
+                <button className="btn btn-sm danger" disabled={typed.trim() !== "刪除" || busy}
+                  onClick={() => run(() => deleteModule(m.id), "模組已刪除", true)}>{busy ? "刪除中…" : "永久刪除"}</button>
+              </div>
+            </>
+          )}
+        </div>
+        <button className="btn" style={{ width:"100%", marginTop:12, border:"none", background:"none", color:"var(--ink-3)" }} onClick={onClose}>關閉</button>
+      </div>
+    </div>
+  );
+}
+
 function AReview({ onSwitch }) {
-  const { fetchModules, deleteModule } = useAuth();
-  const [allModules, setAllModules] = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [tab,        setTab]        = useState("all");   // "all" | "mine"
-  const [confirmDel, setConfirmDel] = useState(null);
+  const { fetchModules, fetchMembers } = useAuth();
+  const [modules,  setModules]  = useState([]);
+  const [members,  setMembers]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [refresh,  setRefresh]  = useState(0);
+  const [q,        setQ]        = useState("");
+  const [filter,   setFilter]   = useState("");      // "" | "published" | "hidden"
+  const [sheetId,  setSheetId]  = useState(null);
+  const [editing,  setEditing]  = useState(null);
+  const [toast,    setToast]    = useState("");
 
-  const load = () => {
+  useEffect(() => {
     setLoading(true);
-    fetchModules().then(all => {
-      setAllModules(all);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  };
-  useEffect(() => { load(); }, []);
+    Promise.all([fetchModules(), fetchMembers()]).then(([ms, mb]) => { setModules(ms); setMembers(mb); setLoading(false); }).catch(() => setLoading(false));
+  }, [refresh]);
+  const reload = (m) => { if (m) setToast(m); setRefresh(r => r + 1); };
 
-  const handleDelete = async (id) => {
-    await deleteModule(id);
-    setConfirmDel(null);
-    load();
-  };
-
-  // 依教練分組
-  const grouped = allModules.reduce((acc, m) => {
-    const key = m.coachName || "未知教練";
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(m);
-    return acc;
-  }, {});
-
-  const coaches = Object.keys(grouped).sort();
+  const coaches  = members.filter(m => rolesOf(m).includes("coach"));
+  const students = members.filter(m => rolesOf(m).includes("student"));
+  const kw = q.trim().toLowerCase();
+  const shown = modules
+    .filter(m => !filter || (filter === "hidden" ? m.status === "hidden" : m.status !== "hidden"))
+    .filter(m => !kw || [m.title, m.outline, m.coachName, ...(m.stage || [])].join(" ").toLowerCase().includes(kw));
+  const hiddenN = modules.filter(m => m.status === "hidden").length;
+  const coachN = new Set(modules.map(m => m.coachId)).size;
+  const sheet = modules.find(m => m.id === sheetId);
 
   return (
     <div className="screen-enter">
-      {confirmDel && (
-        <div style={{ position:"absolute",inset:0,background:"rgba(28,26,23,.45)",backdropFilter:"blur(6px)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
-          <div style={{ background:"var(--cream)",border:"1px solid var(--cream-3)",borderRadius:"var(--r-xl)",padding:"26px 24px",width:"100%",maxWidth:320 }}>
-            <div style={{ fontFamily:"var(--font)",fontSize:fz(20),fontWeight:600,marginBottom:10 }}>確認刪除模組</div>
-            <div style={{ fontSize:fz(16),color:"var(--ink-2)",lineHeight:1.65,marginBottom:20 }}>確定要刪除此課程模組嗎？此動作無法復原。</div>
-            <div className="btn-row" style={{ marginTop:0 }}>
-              <button className="btn" onClick={() => setConfirmDel(null)}>取消</button>
-              <button className="btn" style={{ background:"var(--rust-pale)",color:"var(--rust)",borderColor:"rgba(139,58,42,.2)" }}
-                onClick={() => handleDelete(confirmDel)}>確認刪除</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="topbar"><div className="topbar-title">課程管理</div></div>
-
-      <div className="content">
-        {loading ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:fz(15),marginTop:48 }}>載入中…</div>
-        ) : allModules.length === 0 ? (
-          <div style={{ textAlign:"center",color:"var(--ink-3)",fontSize:fz(15),marginTop:48,lineHeight:1.7 }}>
-            系統尚無課程模組<br/>
-            <span style={{ fontSize:fz(14) }}>教練新增課程模組後會出現在此</span>
-          </div>
-        ) : (
-          <>
-            {/* 統計卡 */}
-            <div className="card-glass" style={{ marginBottom:14 }}>
-              <div style={{ display:"flex", gap:20 }}>
-                <div>
-                  <div style={{ fontFamily:"var(--font)", fontSize:fz(28), fontWeight:600, color:"var(--gold)" }}>{allModules.length}</div>
-                  <div style={{ fontSize:fz(13), color:"var(--ink-3)", letterSpacing:".02em", textTransform:"uppercase", marginTop:2 }}>課程模組</div>
-                </div>
-                <div style={{ width:1, background:"var(--cream-3)" }} />
-                <div>
-                  <div style={{ fontFamily:"var(--font)", fontSize:fz(28), fontWeight:600, color:"var(--sage)" }}>{coaches.length}</div>
-                  <div style={{ fontSize:fz(13), color:"var(--ink-3)", letterSpacing:".02em", textTransform:"uppercase", marginTop:2 }}>教練人數</div>
-                </div>
-              </div>
-            </div>
-
-            {/* 依教練分組顯示 */}
-            {coaches.map(coachName => {
-              const mods = grouped[coachName];
-              const sampleMod = mods[0];
-              const color = getCoachModuleColor(sampleMod?.coachId || coachName);
-              return (
-                <div key={coachName} style={{ marginBottom:16 }}>
-                  {/* 教練標題 */}
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                    <div style={{ width:10, height:10, borderRadius:"50%", background:color.border }} />
-                    <span style={{ fontFamily:"var(--font)", fontSize:fz(16), fontWeight:600, color:"var(--ink)" }}>{coachName}</span>
-                    <span style={{ fontSize:fz(13), color:"var(--ink-3)" }}>{mods.length} 個模組</span>
-                  </div>
-                  {/* 模組列表 */}
-                  {mods.map(m => (
-                    <div key={m.id} style={{
-                      background: color.bg,
-                      border: `1px solid ${color.border}`,
-                      borderLeft: `3px solid ${color.border}`,
-                      borderRadius:"var(--r-lg)", marginBottom:7, padding:"12px 14px",
-                    }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                        <div style={{ flex:1 }}>
-                          <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:5 }}>
-                            {(m.stage||[]).map(s => (
-                              <span key={s} className="badge" style={{ background:"rgba(255,255,255,.8)", color:color.border, border:`1px solid ${color.border}`, fontSize:fz(12) }}>{s}</span>
-                            ))}
-                            {m.duration && <span className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(12) }}>⏱ {m.duration}</span>}
-                            {(m.method||[]).map(mt => <span key={mt} className="badge" style={{ background:"rgba(255,255,255,.6)", color:"var(--ink-3)", border:"1px solid var(--cream-3)", fontSize:fz(12) }}>{mt}</span>)}
-                          </div>
-                          <div style={{ fontFamily:"var(--font)", fontSize:fz(16), fontWeight:600 }}>{m.title}</div>
-                          {m.outline && <div style={{ fontSize:fz(14), color:"var(--ink-3)", marginTop:3, lineHeight:1.55 }}>{m.outline}</div>}
-                        </div>
-                        {/* 管理員可刪除任何模組 */}
-                        <button className="btn btn-sm"
-                          style={{ padding:"4px 10px", fontSize:fz(13), color:"var(--rust)", borderColor:"rgba(139,58,42,.2)", background:"var(--rust-pale)", marginLeft:10, flexShrink:0 }}
-                          onClick={() => setConfirmDel(m.id)}>刪除</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </>
-        )}
+      <div className="content" style={{ paddingTop:4 }}>
+        <div className="stats-grid" style={{ gridTemplateColumns:"repeat(3,1fr)" }}>
+          <div className="stat-tile"><div className="stat-num gold">{loading ? "—" : modules.length}</div><div className="stat-lbl">課程模組</div></div>
+          <div className="stat-tile"><div className="stat-num" style={{ color:"var(--sage)" }}>{loading ? "—" : coachN}</div><div className="stat-lbl">開課教練</div></div>
+          <div className="stat-tile"><div className="stat-num" style={{ color:"var(--ink-3)" }}>{loading ? "—" : hiddenN}</div><div className="stat-lbl">已下架</div></div>
+        </div>
+        <input className="input-field" type="search" placeholder="🔍 搜尋課程名稱、教練、階段" value={q} onChange={e => setQ(e.target.value)} aria-label="搜尋課程" />
+        <div className="seg">
+          {[["", "全部"], ["published", "上架中"], ["hidden", "已下架"]].map(([k, l]) => <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{l}</button>)}
+        </div>
+        <div className="hint" style={{ margin:"0 2px 10px" }}>點教練名字展開，點課程進入管理（編輯、學習資料、上下架、轉移、刪除）。管理員可調整每位教練的課程順序。</div>
+        {loading ? <div className="empty">載入中…</div> :
+          <ModuleGroups modules={shown} canSortAll onOpen={(m) => setSheetId(m.id)} onSaved={reload} showStatus
+            emptyText={kw || filter ? "沒有符合條件的課程" : "系統尚無課程模組"} />}
       </div>
+      {sheet && !editing && (
+        <AdminModuleSheet m={sheet} coaches={coaches} students={students}
+          onClose={() => setSheetId(null)} onChanged={reload} onEdit={(m) => setEditing(m)} />
+      )}
+      {editing && (
+        <ModalAddModule editData={editing}
+          onClose={(saved) => { setEditing(null); if (saved) reload("課程資訊已更新"); }} />
+      )}
+      <Toast msg={toast} onDone={() => setToast("")} />
       <BottomNav tabs={A_TABS} active="review" onSwitch={onSwitch} />
     </div>
   );
@@ -4918,7 +5059,7 @@ export default function App() {
       <>
         <Starfield />
         <div className="app" style={{ alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontFamily:"var(--font)", fontSize:fz(38), color:"var(--gold)", marginBottom:14 }}>✦</div>
+          <div style={{ marginBottom:14 }}><LogoMark size={64} /></div>
           <div style={{ fontSize:fz(15), color:"var(--ink-3)", letterSpacing:".02em" }}>載入中…</div>
         </div>
       </>
@@ -4932,8 +5073,8 @@ export default function App() {
         <div className="app">
           <div className="app-header">
             <div className="header-brand">
-              <span className="header-logo-mark">✦</span>
-              <span className="header-logo-text">iSTAR <span>Alliance</span></span>
+              <LogoMark size={30} />
+              <Wordmark small />
             </div>
             <TextSizeControl />
           </div>
@@ -4950,8 +5091,8 @@ export default function App() {
         <div className="app">
           <div className="app-header">
             <div className="header-brand">
-              <span className="header-logo-mark">✦</span>
-              <span className="header-logo-text">iSTAR <span>Alliance</span></span>
+              <LogoMark size={30} />
+              <Wordmark small />
             </div>
           </div>
           <NoAccessScreen user={user} logout={logout} />
@@ -4968,8 +5109,8 @@ export default function App() {
       <div className="app">
         <div className="app-header">
           <div className="header-brand">
-            <span className="header-logo-mark">✦</span>
-            <span className="header-logo-text">iSTAR <span>Alliance</span></span>
+            <LogoMark size={30} />
+            <Wordmark small />
           </div>
           <div className="header-right">
             {roles.length > 1 ? (

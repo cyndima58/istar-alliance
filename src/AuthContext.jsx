@@ -39,6 +39,16 @@ const getSecondaryAuth = () => {
 const AuthContext = createContext(null);
 
 const ROLE_ORDER = ["admin", "coach", "student"];
+const STUDENT_FIELDS = ["courseType", "coachName", "birthdate"];
+
+/* 課程模組排序：手動排序（order）優先，其次依名稱（「第 2 堂」排在「第 10 堂」前面） */
+export function sortModules(list) {
+  return [...list].sort((a, b) => {
+    const oa = Number.isFinite(a.order) ? a.order : Infinity, ob = Number.isFinite(b.order) ? b.order : Infinity;
+    if (oa !== ob) return oa - ob;
+    return (a.title || "").localeCompare(b.title || "", "zh-Hant", { numeric: true });
+  });
+}
 // 相容舊資料：只有 role 欄位的帳號視為單一身分
 export function rolesOf(u) {
   const list = Array.isArray(u?.roles) && u.roles.length ? u.roles : (u?.role ? [u.role] : []);
@@ -173,11 +183,22 @@ export function AuthProvider({ children }) {
       if (Array.isArray(data.roles)) {
         const list = rolesOf({ roles: data.roles });
         patch.roles = list; patch.role = list[0]; patch.isAdmin = list.includes("admin");
+        // 不是學員就不該有班別、聯絡教練、生日等學員欄位
+        if (!list.includes("student")) STUDENT_FIELDS.forEach(k => { patch[k] = deleteField(); });
       }
       await setDoc(doc(db, "users", uid), patch, { merge: true });
       return { success: true };
     }
     catch (e) { return { success: false, error: e.message }; }
+  };
+
+  // 清掉非學員身上殘留的學員欄位（例如原本建成學員、後來改成教練／管理員）
+  const cleanupStaffFields = async (members) => {
+    const dirty = members.filter(m => !rolesOf(m).includes("student") && STUDENT_FIELDS.some(k => m[k] !== undefined));
+    for (const m of dirty) {
+      try { await setDoc(doc(db, "users", m.uid), Object.fromEntries(STUDENT_FIELDS.map(k => [k, deleteField()])), { merge: true }); } catch {}
+    }
+    return dirty.length;
   };
 
   const deleteMember = async (uid) => {
@@ -208,8 +229,38 @@ export function AuthProvider({ children }) {
         ? query(collection(db, "modules"), where("status", "==", statusFilter))
         : collection(db, "modules");
       const snap = await getDocs(q);
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return sortModules(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch { return []; }
+  };
+
+  // 手動排序：依傳入順序寫入 order
+  const reorderModules = async (ids) => {
+    try {
+      const batch = writeBatch(db);
+      ids.forEach((id, i) => batch.update(doc(db, "modules", id), { order: (i + 1) * 10 }));
+      await batch.commit();
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
+  // 管理員：模組使用狀況（分配給哪些學員、排了幾堂課）
+  const fetchModuleUsage = async (moduleId) => {
+    try {
+      const [as, ss, rs] = await Promise.all([
+        getDocs(query(collection(db, "assignments"), where("moduleIds", "array-contains", moduleId))),
+        getDocs(query(collection(db, "sessions"), where("moduleId", "==", moduleId))),
+        getDocs(resCol(moduleId)),
+      ]);
+      return { studentUids: as.docs.map(d => d.id), sessions: ss.docs.map(d => ({ id: d.id, ...d.data() })), resources: rs.size };
+    } catch { return { studentUids: [], sessions: [], resources: 0 }; }
+  };
+
+  // 管理員：把模組轉給另一位教練（學習資料、學員分配都跟著模組走）
+  const transferModule = async (moduleId, coach) => {
+    try {
+      await updateDoc(doc(db, "modules", moduleId), { coachId: coach.uid, coachName: coach.name, transferredAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
   // 管理員審核：approve | reject
@@ -236,9 +287,24 @@ export function AuthProvider({ children }) {
     } catch (e) { return { success: false, error: e.message }; }
   };
 
+  // 刪除模組：連同學習資料（含檔案區塊）一起刪，並從學員的課程分配中移除
   const deleteModule = async (moduleId) => {
-    try { await deleteDoc(doc(db, "modules", moduleId)); return { success: true }; }
-    catch (e) { return { success: false, error: e.message }; }
+    try {
+      const rs = await getDocs(resCol(moduleId));
+      for (const r of rs.docs) {
+        const parts = r.data().parts || 0;
+        for (let i = 0; i < parts; i++) await deleteDoc(doc(db, "modules", moduleId, "resources", r.id, "chunks", String(i)));
+        await deleteDoc(r.ref);
+      }
+      const as = await getDocs(query(collection(db, "assignments"), where("moduleIds", "array-contains", moduleId)));
+      if (!as.empty) {
+        const batch = writeBatch(db);
+        as.docs.forEach(d => batch.update(d.ref, { moduleIds: (d.data().moduleIds || []).filter(x => x !== moduleId), updatedAt: serverTimestamp() }));
+        await batch.commit();
+      }
+      await deleteDoc(doc(db, "modules", moduleId));
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
   };
 
   /* ════════════════════════════════════════
@@ -756,8 +822,8 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, profile, role, roles, switchRole, loading, error, setError,
       loginWithEmail, logout,
-      /* 成員 */ addMember, fetchMembers, updateMember, deleteMember,
-      /* 模組 */ addModule, fetchModules, reviewModule, updateModule, deleteModule,
+      /* 成員 */ addMember, fetchMembers, updateMember, deleteMember, cleanupStaffFields,
+      /* 模組 */ addModule, fetchModules, reviewModule, updateModule, deleteModule, reorderModules, fetchModuleUsage, transferModule,
       /* 分配 */ saveAssignment, fetchAssignment,
       /* 記錄 */ addRecord, fetchRecords, updateRecord, deleteRecord,
       /* 資料 */ addModuleResource, fetchModuleResources, deleteModuleResource,
