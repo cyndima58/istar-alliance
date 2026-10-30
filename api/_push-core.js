@@ -69,6 +69,18 @@ export async function plan(type, body, callerUid, ctx) {
     case "record_new": { const r = body.id ? await get(`records/${encodeURIComponent(body.id)}`) : null;
       if (!r || r.coachId !== callerUid || !r.visibleStudent) return null;
       return [{ to: [r.studentUid], title: `${r.coachName || "教練"}寫了上課回饋`, body: r.topic || "", url: "/?tab=feedback", tag: "r-" + r.id }]; }
+    case "feedback_new": {                       // 學員寫反饋 → 主要聯絡教練＋幫他上過課的教練
+      const f = body.id ? await get(`feedbacks/${encodeURIComponent(body.id)}`).catch(() => null) : null;
+      if (!f || f.studentUid !== callerUid) return null;
+      const users = await fsList(sa.project_id, "users", token, fetchImpl).catch(() => []);
+      const coaches = users.filter(u => rolesOf(u).includes("coach"));
+      const to = new Set();
+      if (caller?.coachName) coaches.filter(u => u.name === caller.coachName).forEach(u => to.add(u.id));
+      const ss = await fsWhere(sa.project_id, "sessions", "studentUid", callerUid, token, fetchImpl).catch(() => []);
+      ss.forEach(s => { if (s.coachId) to.add(s.coachId); });
+      if (!to.size) coaches.forEach(u => to.add(u.id));     // 還沒有固定教練 → 通知所有教練
+      const text = String(f.text || "").replace(/\s+/g, " ").trim();
+      return [{ to: [...to], title: `${f.studentName || caller?.name || "學員"} 寫了學習反饋`, body: text.length > 120 ? text.slice(0, 120) + "…" : text, url: "/?tab=home", tag: "fb-" + body.id }]; }
     case "milestone_claim": { if (body.studentUid !== callerUid) return null;
       const ss = await fsWhere(sa.project_id, "sessions", "studentUid", callerUid, token, fetchImpl).catch(() => []);
       let to = [...new Set(ss.map(s => s.coachId).filter(Boolean))];

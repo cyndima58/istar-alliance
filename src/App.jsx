@@ -29,6 +29,19 @@ import {
 // 字級：依使用者設定的倍率縮放（--fs）
 const fz = (px) => `calc(${px}px * var(--fs))`;
 
+/* ── 長文字：預覽時可「展開全文」，不會被截掉看不到 ── */
+function LongText({ text, limit = 140, className, style }) {
+  const [open, setOpen] = useState(false);
+  const t = String(text || "");
+  const long = t.length > limit || (t.match(/\n/g) || []).length > 5;
+  return (
+    <div className={className} style={{ whiteSpace:"pre-wrap", wordBreak:"break-word", overflowWrap:"anywhere", ...style }}>
+      {!long || open ? t : t.slice(0, limit).trimEnd() + "…"}
+      {long && <button type="button" className="link-more" onClick={e => { e.stopPropagation(); setOpen(o => !o); }}>{open ? "收合" : "展開全文"}</button>}
+    </div>
+  );
+}
+
 /* ── 會員期間 ── */
 function MemberPill({ u }) {
   const st = memberStatus(u), c = MEMBER_STATUS[st];
@@ -391,7 +404,9 @@ body {
   border-radius: 0 var(--r) var(--r) 0;
   padding: 12px 16px; font-size: calc(16px * var(--fs));
   color: var(--ink-2); line-height: 1.7; margin-bottom: 8px;
+  white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
 }
+.link-more { display:inline-block; margin-left:6px; padding:0; border:none; background:none; font-family:var(--font); font-size: calc(14px * var(--fs)); font-weight:700; color: var(--gold); cursor:pointer; white-space:nowrap; }
 .feedback-author { font-size: calc(13px * var(--fs)); color: var(--gold); margin-bottom: 8px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
 
 /* ── Forms ── */
@@ -443,7 +458,7 @@ select.input-field { appearance: none; cursor: pointer; }
 .drop-label { font-family: var(--font); font-size: calc(14px * var(--fs)); color: var(--sage); margin-bottom: 8px; letter-spacing: .04em; }
 
 /* ── Record notes ── */
-.record-note { background: var(--cream-2); border-radius: var(--r); padding: 11px 14px; font-size: calc(16px * var(--fs)); color: var(--ink-2); line-height: 1.7; margin-top: 8px; }
+.record-note { background: var(--cream-2); border-radius: var(--r); padding: 11px 14px; font-size: calc(16px * var(--fs)); color: var(--ink-2); line-height: 1.7; margin-top: 8px; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
 .record-note.coach-only { background: var(--gold-pale); }
 .record-note-label { font-family: var(--font); font-size: calc(12px * var(--fs)); font-weight: 700; letter-spacing: .02em; text-transform: uppercase; margin-bottom: 5px; font-style: normal; }
 
@@ -768,6 +783,9 @@ button, input, select, textarea { font-family: var(--font); }
 .member-box { border:1px solid var(--gold-line); background: #FFFDF7; border-radius: var(--r-lg); padding: 12px 14px 4px; margin-bottom: 14px; }
 .member-box-title { font-size: calc(15px * var(--fs)); font-weight:700; color: var(--gold); margin-bottom: 4px; }
 .slot-locked { opacity:.55; }
+.fix-check { display:flex; align-items:center; gap:8px; font-size: calc(15px * var(--fs)); font-weight:600; margin: 4px 0 8px; }
+.fix-check input { width:18px; height:18px; }
+.fix-log-row { font-size: calc(13px * var(--fs)); color: var(--ink-3); line-height:1.6; padding: 4px 0; border-bottom:1px dashed var(--cream-3); }
 .coach-name { font-size: calc(17px * var(--fs)); font-weight: 600; }
 .coach-tag { font-size: calc(14px * var(--fs)); color: var(--ink-3); }
 .coach-row { padding: 12px 0; min-height: 56px; }
@@ -2079,9 +2097,10 @@ function AttendancePanel({ s, viewer, onUpdated, onWriteRecord }) {
     fetchSessionPhotos(s.id).then(setPhotos);
   };
 
-  const who = s.checkIn ? (s.checkIn.role === "student" ? "學員本人簽到" : `${s.checkIn.byName || "教練"} 代簽`) : "";
+  const who = s.checkIn ? (s.checkIn.manual ? `管理員補登（${s.checkIn.byName || "管理員"}）` : s.checkIn.role === "student" ? "學員本人簽到" : `${s.checkIn.byName || "教練"} 代簽`) : "";
   const dm = deliveredMinutes(s), sm = scheduledMinutes(s);
-  const canEditPhotos = staff && s.checkIn && !s.checkOut;
+  // 管理員隨時可以補上傳／刪除照片（例如課後補登）
+  const canEditPhotos = (viewer === "admin" && !!s.checkIn) || (staff && s.checkIn && !s.checkOut);
 
   return (
     <div className="attend">
@@ -2112,7 +2131,7 @@ function AttendancePanel({ s, viewer, onUpdated, onWriteRecord }) {
             <div className="step-t">簽退</div>
             <div className="step-s">
               {s.checkOut
-                ? <>{fmtClock(s.checkOut.at)} · 實際上課 <b>{formatMinutes(dm)}</b>（排定 {formatMinutes(sm)}）{isShort(s) && <span style={{ color:"var(--rust)" }}> · 時數不足</span>}</>
+                ? <>{fmtClock(s.checkOut.at)} · 實際上課 <b>{formatMinutes(dm)}</b>（排定 {formatMinutes(sm)}）{isShort(s) && <span style={{ color:"var(--rust)" }}> · 時數不足</span>}{s.checkOut.manual && <span> · 管理員補登</span>}</>
                 : "課程結束後由教練簽退"}
             </div>
           </div>
@@ -2158,7 +2177,7 @@ function AttendancePanel({ s, viewer, onUpdated, onWriteRecord }) {
       )}
 
       {/* ── 教練／管理員 ── */}
-      {staff && !s.checkIn && (st === "open" || st === "missed" || (st === "upcoming" && s.date === todayStr())) && (
+      {staff && !s.checkIn && (st === "open" || (st === "missed" && viewer !== "admin") || (st === "upcoming" && s.date === todayStr())) && (
         <button className="btn" style={{ width:"100%", marginTop:12 }} disabled={!!busy}
           onClick={() => act("in", () => checkInSession(s.id, viewer), "已代學員簽到")}>
           {busy === "in" ? "處理中…" : "代學員簽到（學員沒有手機時使用）"}
@@ -2293,6 +2312,87 @@ function HoursReport({ sessions, viewer, onOpen }) {
 }
 
 /* ── 課程時段詳情（依角色顯示不同操作）── */
+/* 管理員修正面板：學員忘了簽到、教練忘了簽退、時間要更正 */
+const toLocalInput = (t) => {
+  const ms = t?.toDate ? t.toDate().getTime() : t?.seconds ? t.seconds * 1000 : null;
+  if (ms == null) return "";
+  const d = new Date(ms), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+function AdminFixPanel({ s, onSaved }) {
+  const { adminFixSession } = useAuth();
+  const [open, setOpen] = useState(false);
+  const init = () => ({
+    date: s.date, start: s.start, end: s.end,
+    hasIn: !!s.checkIn,  inAt:  toLocalInput(s.checkIn?.at)  || `${s.date}T${s.start}`,
+    hasOut: !!s.checkOut, outAt: toLocalInput(s.checkOut?.at) || `${s.date}T${s.end}`,
+    summary: s.checkOut?.summary || "", reason: "",
+  });
+  const [f, setF] = useState(init);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => { setF(init()); }, [s.id, s.checkIn, s.checkOut, s.date, s.start, s.end]);
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const save = async () => {
+    setBusy(true); setErr("");
+    const r = await adminFixSession(s.id, {
+      date: f.date, start: f.start, end: f.end,
+      checkInAt: f.hasIn ? f.inAt : "", checkOutAt: f.hasIn && f.hasOut ? f.outAt : "",
+      summary: f.summary, reason: f.reason,
+    });
+    setBusy(false);
+    if (!r.success) { setErr(r.error || "儲存失敗，請再試一次"); return; }
+    setOpen(false);
+    onSaved?.("已修正：" + r.changes.join("、"));
+  };
+  const edits = s.adminEdits || [];
+  return (
+    <div className="admin-fix">
+      {!open
+        ? <button className="btn" style={{ width:"100%", marginTop:12 }} onClick={() => { setF(init()); setOpen(true); }}>✎ 管理員修正：補登簽到／簽退、更改時間</button>
+        : (
+        <div className="card admin-fix-form" style={{ marginTop:12, padding:"14px 16px" }}>
+          <div style={{ fontSize:fz(16), fontWeight:700, marginBottom:4 }}>管理員修正這堂課</div>
+          <div className="hint" style={{ marginTop:0, marginBottom:10 }}>學員忘了簽到、教練忘了簽退，或時間需要更正時使用。修正後時數報表與分潤會自動重算，並留下修正紀錄。</div>
+          {err && <div className="login-error">{err}</div>}
+          <div className="input-label">上課日期</div>
+          <input id="fix-date" className="input-field" type="date" value={f.date} onChange={e => set("date", e.target.value)} />
+          <div className="input-label">上課時間</div>
+          <div className="time-row">
+            <input id="fix-start" className="input-field" type="time" step="300" value={f.start} onChange={e => set("start", e.target.value)} />
+            <span style={{ color:"var(--ink-4)", marginBottom:10 }}>–</span>
+            <input id="fix-end" className="input-field" type="time" step="300" value={f.end} onChange={e => set("end", e.target.value)} />
+          </div>
+          <label className="fix-check"><input id="fix-has-in" type="checkbox" checked={f.hasIn} onChange={e => set("hasIn", e.target.checked)} /> 有簽到</label>
+          {f.hasIn && <input id="fix-in" className="input-field" type="datetime-local" value={f.inAt} onChange={e => set("inAt", e.target.value)} />}
+          <label className="fix-check"><input id="fix-has-out" type="checkbox" checked={f.hasIn && f.hasOut} disabled={!f.hasIn} onChange={e => set("hasOut", e.target.checked)} /> 已簽退（完成交付）</label>
+          {f.hasIn && f.hasOut && (
+            <>
+              <input id="fix-out" className="input-field" type="datetime-local" value={f.outAt} onChange={e => set("outAt", e.target.value)} />
+              <div className="input-label">課堂摘要（選填，學員看得到）</div>
+              <textarea id="fix-summary" className="input-field" rows={2} value={f.summary} onChange={e => set("summary", e.target.value)} />
+            </>
+          )}
+          <div className="input-label">修正原因 *</div>
+          <input id="fix-reason" className="input-field" placeholder="例：學員忘了簽到，教練確認當天有出席" value={f.reason} onChange={e => set("reason", e.target.value)} />
+          <div className="btn-row" style={{ marginTop:4 }}>
+            <button className="btn" onClick={() => { setOpen(false); setErr(""); }}>取消</button>
+            <button className="btn btn-primary" disabled={busy || !f.reason.trim()} onClick={save}>{busy ? "儲存中…" : "✦ 儲存修正"}</button>
+          </div>
+        </div>
+      )}
+      {edits.length > 0 && (
+        <div className="fix-log">
+          <div className="record-note-label" style={{ color:"var(--ink-3)", marginTop:12 }}>修正紀錄</div>
+          {[...edits].reverse().map((e, i) => (
+            <div key={i} className="fix-log-row">{fmtDateTime(e.at)} · {e.byName}：{e.changes}（原因：{e.reason}）</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SessionSheet({ s: initial, viewer, onClose, onChanged, onEdit, onWriteRecord }) {
   const { profile, confirmSession, requestReschedule, bookOpenSession, deleteSession, fetchSession } = useAuth();
   // 簽到、上傳照片、簽退後留在這個畫面並顯示最新資料
@@ -2414,6 +2514,9 @@ function SessionSheet({ s: initial, viewer, onClose, onChanged, onEdit, onWriteR
         {s.status === "confirmed" && s.studentUid && (
           <AttendancePanel s={s} viewer={viewer} onUpdated={reload} onWriteRecord={onWriteRecord} />
         )}
+
+        {/* ── 管理員：補登／更正簽到簽退、修改時間（課程結束後也可以）── */}
+        {viewer === "admin" && s.studentUid && <AdminFixPanel s={s} onSaved={reload} />}
 
         {/* ── 教練操作 ── */}
         {viewer === "coach" && !confirmDel && (
@@ -2915,11 +3018,7 @@ function SHome({ onSwitch }) {
             <div className="sec-h">最新回饋</div>
             <div className="card" style={{ cursor:"pointer" }} onClick={() => onSwitch("feedback")}>
               <div className="feedback-author">✦ {latestFeedback.coachName} · {latestFeedback.date}</div>
-              <div className="feedback-quote" style={{ fontSize:fz(15), marginBottom:0 }}>
-                {latestFeedback.feedback.length > 80
-                  ? latestFeedback.feedback.slice(0,80) + "…"
-                  : latestFeedback.feedback}
-              </div>
+              <LongText className="feedback-quote" style={{ fontSize:fz(15), marginBottom:0 }} text={latestFeedback.feedback} limit={120} />
               <div style={{ fontSize:fz(13), color:"var(--ink-4)", marginTop:8 }}>
                 點此查看完整回饋 →
               </div>
@@ -3232,6 +3331,7 @@ function CHome({ onSwitch, onModal }) {
   const [upcoming,  setUpcoming]  = useState([]);   // 今天起的課程
   const [schedCnt,  setSchedCnt]  = useState({});
   const [feedbacks, setFeedbacks] = useState([]);
+  const [allFb,     setAllFb]     = useState(false);
   const [students,        setStudents]        = useState([]);
   const [moduleCount,     setModuleCount]     = useState(0);
   const [unassigned,      setUnassigned]      = useState([]);  // 尚未分配課程的學員
@@ -3251,7 +3351,7 @@ function CHome({ onSwitch, onModal }) {
       setUpcoming(future.filter(s => s.date !== todayStr()));
       setSchedCnt(countByStatus(future));
     }).catch(() => {});
-    fetchFeedbacks().then(list => setFeedbacks(list.slice(0, 3))).catch(() => {});
+    fetchFeedbacks().then(setFeedbacks).catch(() => {});
   }, [profile?.uid, sRefresh]);
 
   // 今天的課、待補簽退／簽到（最近 14 天）
@@ -3448,12 +3548,17 @@ function CHome({ onSwitch, onModal }) {
         {feedbacks.length > 0 && (
           <>
             <div className="sec-h">學員最新反饋</div>
-            {feedbacks.map(f => (
-              <div key={f.id} className="card card-sm">
+            {(allFb ? feedbacks : feedbacks.slice(0, 3)).map(f => (
+              <div key={f.id} className="card card-sm fb-card">
                 <div style={{ fontSize:fz(13), color:"var(--gold)", fontWeight:700, marginBottom:4 }}>{f.studentName || "學員"} · {f.createdAt?.toDate?.()?.toLocaleDateString("zh-TW") || ""}</div>
-                <div style={{ fontSize:fz(15), color:"var(--ink-2)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>{f.text.length > 100 ? f.text.slice(0,100) + "…" : f.text}</div>
+                <LongText style={{ fontSize:fz(15), color:"var(--ink-2)", lineHeight:1.6 }} text={f.text} />
               </div>
             ))}
+            {feedbacks.length > 3 && (
+              <button className="btn btn-sm" style={{ width:"100%", marginBottom:12 }} onClick={() => setAllFb(v => !v)}>
+                {allFb ? "只看最新 3 則" : `查看全部學員反饋（${feedbacks.length} 則）`}
+              </button>
+            )}
           </>
         )}
 
@@ -4695,6 +4800,11 @@ function ARecords({ onSwitch }) {
   }, [refresh]);
   const future = sortSessions(sessions.filter(s => !isPast(s)));
   const counts = countByStatus(future);
+  // 已結束的課（最近 90 天）：沒有完整簽到簽退的排最前面，方便管理員補登
+  const since = addDays(todayStr(), -90);
+  const ended = sortSessions(sessions.filter(s => isPast(s) && s.studentUid && s.date >= since && s.status !== "open")).reverse();
+  const toFix = ended.filter(s => !s.checkIn || !s.checkOut);
+  const [showEnded, setShowEnded] = useState(false);
   return (
     <div className="screen-enter">
       <div className="topbar"><div className="topbar-title">交付與記錄</div></div>
@@ -4717,9 +4827,21 @@ function ARecords({ onSwitch }) {
                 </span>
               ))}
             </div>
+            {toFix.length > 0 && (
+              <div className="alert-card fix-needed" style={{ background:"#FEF3D0", borderColor:"rgba(138,104,32,.25)" }}>
+                <div style={{ fontSize:fz(16), fontWeight:700, color:"#8A6820" }}>{toFix.length} 堂已結束的課沒有完整簽到／簽退</div>
+                <div style={{ fontSize:fz(14), color:"#A07830", marginTop:3, marginBottom:10 }}>點開課程 →「管理員修正」補登，時數與分潤會自動重算</div>
+                {toFix.map(s => <SessionItem key={s.id} s={s} viewer="admin" onOpen={setSheet} showDate />)}
+              </div>
+            )}
+            <div className="sec-h">即將到來</div>
             {future.length === 0
               ? <div className="empty">目前沒有即將到來的課程</div>
               : future.map(s => <SessionItem key={s.id} s={s} viewer="admin" onOpen={setSheet} showDate />)}
+            <button className="btn btn-sm" style={{ width:"100%", marginTop:12 }} onClick={() => setShowEnded(v => !v)}>
+              {showEnded ? "收合已結束的課程" : `查看已結束的課程（最近 90 天 · ${ended.length} 堂）`}
+            </button>
+            {showEnded && ended.map(s => <SessionItem key={s.id} s={s} viewer="admin" onOpen={setSheet} showDate />)}
           </>
         ) : records.length === 0 ? (
           <div className="empty">尚無上課記錄</div>

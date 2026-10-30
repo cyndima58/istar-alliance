@@ -10,7 +10,7 @@ import {
   doc, getDoc, setDoc, collection,
   query, where, getDocs, addDoc,
   updateDoc, deleteDoc, serverTimestamp, deleteField,
-  writeBatch, runTransaction, orderBy, limit,
+  writeBatch, runTransaction, orderBy, limit, Timestamp,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { normalizeCourse, initialJourney, advanceUpdate, setStageUpdate, mKey, stageOf } from "./journey";
@@ -616,6 +616,55 @@ export function AuthProvider({ children }) {
     catch { return null; }
   };
 
+  /*
+   * 管理員修正已結束的課：改日期／時間、補登或更正簽到／簽退時間（學員忘了簽到、教練忘了簽退）
+   * input: { date, start, end, checkInAt, checkOutAt, summary, reason }  時間為 "YYYY-MM-DDTHH:mm"（空字串＝清除）
+   * 每次修正都留下紀錄（誰、何時、原因、改了什麼）
+   */
+  const adminFixSession = async (id, input) => {
+    try {
+      const cur = await fetchSession(id);
+      if (!cur) return { success: false, error: "找不到這堂課" };
+      const reason = (input.reason || "").trim();
+      if (!reason) return { success: false, error: "請填寫修正原因" };
+      const ms = (t) => (t ? new Date(t).getTime() : null);
+      const tsMs = (t) => t?.toDate ? t.toDate().getTime() : t?.seconds ? t.seconds * 1000 : null;
+      const minuteOf = (x) => (x == null ? null : Math.floor(x / 60000));
+      const inMs = ms(input.checkInAt), outMs = ms(input.checkOutAt);
+      if (input.checkInAt && isNaN(inMs)) return { success: false, error: "簽到時間格式不正確" };
+      if (input.checkOutAt && isNaN(outMs)) return { success: false, error: "簽退時間格式不正確" };
+      if (outMs && !inMs) return { success: false, error: "要先有簽到時間，才能補登簽退" };
+      if (outMs && outMs <= inMs) return { success: false, error: "簽退時間必須晚於簽到時間" };
+      if (!input.date || !input.start || !input.end || input.end <= input.start) return { success: false, error: "請確認上課日期與時間（結束要晚於開始）" };
+      const me = { by: auth.currentUser?.uid || "", byName: profile?.name || "管理員" };
+      const patch = { date: input.date, start: input.start, end: input.end, updatedAt: serverTimestamp() };
+      const changes = [];
+      if (cur.date !== input.date || cur.start !== input.start || cur.end !== input.end) changes.push(`時間 ${cur.date} ${cur.start}–${cur.end} → ${input.date} ${input.start}–${input.end}`);
+      const fmt = (x) => { const d = new Date(x); const p = (n) => String(n).padStart(2, "0"); return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+      // 簽到
+      if (!inMs) { if (cur.checkIn) { patch.checkIn = deleteField(); changes.push("清除簽到"); } }
+      else if (minuteOf(tsMs(cur.checkIn?.at)) !== minuteOf(inMs)) {
+        patch.checkIn = { at: Timestamp.fromDate(new Date(inMs)), ...me, role: "admin", manual: true };
+        changes.push(`${cur.checkIn ? "更正" : "補登"}簽到 ${fmt(inMs)}`);
+      }
+      // 簽退
+      const summary = (input.summary ?? cur.checkOut?.summary ?? "").trim();
+      if (!outMs) { if (cur.checkOut) { patch.checkOut = deleteField(); changes.push("清除簽退"); } }
+      else if (minuteOf(tsMs(cur.checkOut?.at)) !== minuteOf(outMs) || (cur.checkOut?.summary || "") !== summary) {
+        // 只改摘要時保留原本的簽退時間與簽退人
+        const sameTime = minuteOf(tsMs(cur.checkOut?.at)) === minuteOf(outMs);
+        patch.checkOut = sameTime ? { ...cur.checkOut, summary, editedBy: me.by } : { at: Timestamp.fromDate(new Date(outMs)), ...me, summary, manual: true };
+        changes.push(sameTime ? "修改課堂摘要" : `${cur.checkOut ? "更正" : "補登"}簽退 ${fmt(outMs)}`);
+      }
+      // 有簽到的課一定是已排定（例如學員忘了按確認）
+      if (inMs && cur.studentUid && cur.status !== "confirmed") { patch.status = "confirmed"; changes.push("狀態改為已排定"); }
+      if (!changes.length) return { success: false, error: "沒有任何變更" };
+      patch.adminEdits = [...(cur.adminEdits || []), { at: Timestamp.now(), ...me, reason, changes: changes.join("；") }].slice(-20);
+      await updateDoc(doc(db, "sessions", id), patch);
+      return { success: true, changes };
+    } catch (e) { return { success: false, error: e.message }; }
+  };
+
   // 學員確認教練排定的時段 → 已排定
   const confirmSession = async (id) => {
     const cur = await fetchSession(id);
@@ -849,12 +898,13 @@ export function AuthProvider({ children }) {
   ════════════════════════════════════════ */
   const addFeedback = async (text) => {
     try {
-      await addDoc(collection(db, "feedbacks"), {
+      const ref = await addDoc(collection(db, "feedbacks"), {
         text,
         studentUid:  auth.currentUser?.uid || "",
         studentName: profile?.name || "",
         createdAt:   serverTimestamp(),
       });
+      notify("feedback_new", { id: ref.id });   // 推播給教練
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   };
@@ -966,7 +1016,7 @@ export function AuthProvider({ children }) {
       /* 路徑 */ fetchJourney, fetchJourneys, ensureJourneys, claimMilestone, unclaimMilestone,
                  verifyMilestone, advanceStage, setJourneyStage, setStageNote,
       /* 排課 */ addSessions, updateSession, deleteSession, fetchSessions, fetchSession,
-                 confirmSession, requestReschedule, bookOpenSession,
+                 confirmSession, requestReschedule, bookOpenSession, adminFixSession,
       /* 出席 */ checkInSession, checkOutSession, fetchSessionPhotos, addSessionPhoto, deleteSessionPhoto,
       /* 帳號 */ resetPassword, myRequest, requestAccess, fetchAccessRequests, approveAccess, rejectAccess, refreshProfile,
       /* 財務 */ fetchFinance, finAdd, finUpdate, finDelete, setFinanceSetting, fetchFinanceLogs,
