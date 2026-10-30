@@ -9,7 +9,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // 推播通知的處理程式（public/push-sw.js）載入到 PWA 的 service worker
       workbox: { importScripts: ['push-sw.js'], navigateFallbackDenylist: [/^\/api\//, /^\/guide\//] },
-      includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'maskable-512.png', 'logo-mark.svg'],
+      includeAssets: ['favicon.ico', 'favicon.svg', 'app-apple-touch-icon.png', 'app-icon-192.png', 'app-icon-512.png', 'app-maskable-512.png', 'logo-mark.svg'],
       manifest: {
         name: 'iSTAR Alliance 星辰聯盟',
         short_name: 'iSTAR',
@@ -21,19 +21,19 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: 'icon-192.png',
+            src: 'app-icon-192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: 'icon-512.png',
+            src: 'app-icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: 'maskable-512.png',
+            src: 'app-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
